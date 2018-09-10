@@ -196,6 +196,7 @@ impl TermUI {
                         self.editor.insert_text_at_cursor(nl);
                     }
 
+                    // TODO: why special case this?
                     Key::Char(' ') => {
                         self.editor.insert_text_at_cursor(" ");
                     }

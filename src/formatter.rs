@@ -9,7 +9,7 @@ use utils::RopeGraphemes;
 // This is necessary to prevent pathological formatting cases which
 // could slow down the editor arbitrarily for arbitrarily long
 // lines.
-pub const LINE_BLOCK_LENGTH: usize = 1 << 12;
+pub const LINE_BLOCK_LENGTH: usize = 1 << 12;  // 4096 i.e. 2^12
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum RoundingBehavior {

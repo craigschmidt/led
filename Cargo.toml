@@ -1,7 +1,7 @@
-[workspace]
-members = [
-    "sub_crates/backend",
-]
+#[workspace]
+#members = [
+#    "sub_crates/backend",
+#]
 
 [package]
 name = "Led"
@@ -14,7 +14,6 @@ name = "led"
 path = "src/main.rs"
 
 [dependencies]
-# ropey = "0.8"
 ropey = { git = "https://github.com/cessen/ropey", branch = "master" }
 unicode-segmentation = "1.2.1"
 unicode-width = "0.1"
@@ -24,6 +23,3 @@ docopt = "0.8"
 smallvec = "0.6"
 termion = "1.5"
 
-# Local crate dependencies
-[dependencies.backend]
-path = "sub_crates/backend"

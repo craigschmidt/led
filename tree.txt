@@ -1,0 +1,266 @@
+// main.rs
+    use docopt::Docopt;
+    use editor::Editor;
+    use std::path::Path;
+    use term_ui::formatter::ConsoleLineFormatter;
+    use term_ui::TermUI;
+
+    mod buffer;
+    mod editor;
+    mod formatter;
+    mod string_utils;
+    mod term_ui;
+    mod utils;
+
+    // Editor uses ConsoleLineFormatter
+    // TermUI uses Editor
+
+// term_ui
+    // mod.rs
+        use std;
+        use std::cmp::min;
+
+        use termion;
+        use termion::event::{Event, Key};
+        use termion::input::TermRead;
+
+        use self::formatter::ConsoleLineFormatter;
+        use editor::Editor;
+        use formatter::{block_index_and_offset, LineFormatter, LINE_BLOCK_LENGTH};
+        use string_utils::{line_ending_to_str, rope_slice_is_line_ending, LineEnding};
+        use utils::{digit_count, RopeGraphemes};
+
+        pub mod formatter;
+        mod screen;
+        pub mod smallstring;
+
+        use self::screen::{Color, Screen, Style};
+
+        // macro_rules! ui_loop
+
+        pub struct TermUI {
+            inp: termion::input::Events<termion::AsyncReader>,
+            screen: Screen,
+            editor: Editor<ConsoleLineFormatter>,
+            width: usize,
+            height: usize,
+            quit: bool,
+        }
+
+        // other unused event loops here
+
+    // formatter.rs
+
+        use std::cmp::max;
+
+        use formatter::{LineFormatter, RoundingBehavior};
+        use ropey::RopeSlice;
+        use string_utils::{rope_slice_is_line_ending, rope_slice_is_whitespace};
+        use utils::grapheme_width;
+
+
+        pub enum WrapType {
+            NoWrap,
+            CharWrap(usize),
+            WordWrap(usize),
+        }
+
+        pub struct ConsoleLineFormatter {
+            pub tab_width: u8,                  // how big are tabs
+            pub wrap_type: WrapType,            // do we wrap lines
+            pub maintain_indent: bool,          // TODO: what's this do
+            pub wrap_additional_indent: usize,  // any extra indentation on wrapped lines
+        }
+
+        // impl LineFormatter for ConsoleLineFormatter
+
+    // screen.rs
+        use std;
+        use std::cell::RefCell;
+        use std::io;
+        use std::io::{BufWriter, Write};
+
+        use super::smallstring::SmallString;
+        use ropey::RopeSlice;
+        use termion;
+        use termion::color;
+        use termion::raw::{IntoRawMode, RawTerminal};
+        use termion::screen::AlternateScreen;
+        use unicode_segmentation::UnicodeSegmentation;
+        use unicode_width::UnicodeWidthStr;
+        use utils::{grapheme_width, RopeGraphemes};
+
+        pub(crate) struct Screen {
+            out: RefCell<AlternateScreen<RawTerminal<BufWriter<io::Stdout>>>>,
+            buf: RefCell<Vec<Option<(Style, SmallString)>>>,
+            w: usize,
+            h: usize,
+        }
+
+        pub(crate) enum Color {
+            Black,
+            Blue,
+            Cyan,
+            Green,
+            LightBlack,
+            LightBlue,
+            LightCyan,
+            LightGreen,
+            LightMagenta,
+            LightRed,
+            LightWhite,
+            LightYellow,
+            Magenta,
+            Red,
+            Rgb(u8, u8, u8),
+            White,
+            Yellow,
+        }
+
+        pub(crate) struct Style(pub Color, pub Color); // Fg, Bg
+
+
+    // smallstring.rs
+
+        use std;
+
+        use std::borrow::Borrow;
+        use std::ops::Deref;
+        use std::ptr;
+        use std::str;
+
+        use ropey::RopeSlice;
+
+        use smallvec::SmallVec;
+
+        pub(crate) struct SmallString {
+            buffer: SmallVec<[u8; 8]>,
+        }
+
+// editor
+    // mod.rs
+        use std::collections::HashMap;
+
+        use self::cursor::CursorSet;
+        use buffer::Buffer;
+        use formatter::LineFormatter;
+        use formatter::RoundingBehavior::*;
+        use std::cmp::{max, min};
+        use std::path::{Path, PathBuf};
+        use string_utils::{char_count, rope_slice_to_line_ending, LineEnding};
+        use utils::{digit_count, RopeGraphemes};
+
+        mod cursor;
+
+        pub struct Editor<T: LineFormatter> {
+            pub buffer: Buffer,
+            pub formatter: T,
+            pub file_path: PathBuf,
+            pub line_ending_type: LineEnding,
+            pub soft_tabs: bool,
+            pub soft_tab_width: u8,
+            pub dirty: bool,
+
+            // The dimensions of the total editor in screen space, including the
+            // header, gutter, etc.
+            pub editor_dim: (usize, usize),
+
+            // The dimensions and position of just the text view portion of the editor
+            pub view_dim: (usize, usize), // (height, width)
+            pub view_pos: (usize, usize), // (char index, visual horizontal offset)
+
+            // The editing cursor position
+            pub cursors: CursorSet,
+        }
+
+        // lots of interesting functions here
+
+    // cursor.rs
+        use std::cmp::Ordering;
+        use std::ops::{Index, IndexMut};
+        use std::slice::{Iter, IterMut};
+
+        use buffer::Buffer;
+        use formatter::LineFormatter;
+
+        pub struct Cursor {
+            pub range: (usize, usize), // start, end
+            pub vis_start: usize,      // start
+        }
+
+        pub struct CursorSet {
+            cursors: Vec<Cursor>,
+        }
+
+// formatter.rs
+
+    use buffer::Buffer;
+    use ropey::RopeSlice;
+    use std::cmp::min;
+    use utils::RopeGraphemes;
+
+    pub enum RoundingBehavior {
+        Round,
+        Floor,
+        Ceiling,
+    }
+
+    pub trait LineFormatter;
+
+// buffer
+    // mod.rs
+
+        use std::fs::File;
+        use std::io;
+        use std::io::{BufReader, BufWriter, Write};
+        use std::path::{Path, PathBuf};
+
+        use self::undo_stack::Operation::*;
+        use self::undo_stack::UndoStack;
+        use ropey;
+        use ropey::{Rope, RopeSlice};
+        use string_utils::char_count;
+        use utils::{is_grapheme_boundary, next_grapheme_boundary, prev_grapheme_boundary, RopeGraphemes};
+
+        mod undo_stack;
+
+        pub struct Buffer {
+            text: Rope,
+            file_path: Option<PathBuf>,
+            undo_stack: UndoStack,
+        }
+
+    // undo_stack.rs
+
+        use std::collections::LinkedList;
+
+        /// An undo/redo stack of text editing operations
+        pub struct UndoStack {
+            stack_a: LinkedList<Operation>,
+            stack_b: LinkedList<Operation>,
+        }
+
+// string_utils.rs
+    
+    use ropey::RopeSlice;
+    use std::iter::repeat;
+    use unicode_segmentation::UnicodeSegmentation;
+
+    // a bunch of string functions here
+
+// utils.rs
+
+    use ropey::{iter::Chunks, str_utils::byte_to_char_idx, RopeSlice};
+    use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
+    use unicode_width::UnicodeWidthStr;
+
+    pub struct RopeGraphemes<'a> {
+        text: RopeSlice<'a>,
+        chunks: Chunks<'a>,
+        cur_chunk: &'a str,
+        cur_chunk_start: usize,
+        cursor: GraphemeCursor,
+    }
+
+    // grapheme related stuff
+    pub fn digit_count;  // and this

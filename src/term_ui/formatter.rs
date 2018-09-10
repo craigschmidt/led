@@ -1,10 +1,12 @@
 use std::cmp::max;
 
+// TODO: look at these first
 use formatter::{LineFormatter, RoundingBehavior};
 use ropey::RopeSlice;
 use string_utils::{rope_slice_is_line_ending, rope_slice_is_whitespace};
 use utils::grapheme_width;
 
+// line wrap style
 pub enum WrapType {
     NoWrap,
     CharWrap(usize),
@@ -13,25 +15,27 @@ pub enum WrapType {
 
 // ===================================================================
 // LineFormatter implementation for terminals/consoles.
+// it takes care of converting tabs to spaces, and handling word wrap (if enabled)
 // ===================================================================
 
 pub struct ConsoleLineFormatter {
-    pub tab_width: u8,
-    pub wrap_type: WrapType,
-    pub maintain_indent: bool,
-    pub wrap_additional_indent: usize,
+    pub tab_width: u8,                  // how big are tabs
+    pub wrap_type: WrapType,            // do we wrap lines
+    pub maintain_indent: bool,          // TODO: what's this do
+    pub wrap_additional_indent: usize,  // any extra indentation on wrapped lines
 }
 
 impl ConsoleLineFormatter {
     pub fn new(tab_width: u8) -> ConsoleLineFormatter {
         ConsoleLineFormatter {
             tab_width: tab_width,
-            wrap_type: WrapType::WordWrap(40),
+            wrap_type: WrapType::WordWrap(40),  // a default, really set by set_wrap_width
             maintain_indent: true,
             wrap_additional_indent: 0,
         }
     }
 
+    // set the value on the wrap_type enums
     pub fn set_wrap_width(&mut self, width: usize) {
         match self.wrap_type {
             WrapType::NoWrap => {}
@@ -46,6 +50,9 @@ impl ConsoleLineFormatter {
         }
     }
 
+    // to iterate over the graphemes
+    // a grapheme cluster is text that should be kept together
+    // like a letter and associated accent marks
     pub fn iter<'a, T>(&'a self, g_iter: T) -> ConsoleLineFormatterVisIter<'a, T>
     where
         T: Iterator<Item = RopeSlice<'a>>,
@@ -62,11 +69,15 @@ impl ConsoleLineFormatter {
     }
 }
 
+// TODO: stopped here, go find LineFormatter somewhere
 impl LineFormatter for ConsoleLineFormatter {
     fn single_line_height(&self) -> usize {
         return 1;
     }
 
+    /// Returns the 2d visual dimensions of the given text when formatted
+    /// by the formatter.
+    /// The text to be formatted is passed as a grapheme iterator.
     fn dimensions<'a, T>(&'a self, g_iter: T) -> (usize, usize)
     where
         T: Iterator<Item = RopeSlice<'a>>,
@@ -82,6 +93,8 @@ impl LineFormatter for ConsoleLineFormatter {
         return dim;
     }
 
+    /// Converts a char index within a text into a visual 2d position.
+    /// The text to be formatted is passed as a grapheme iterator.
     fn index_to_v2d<'a, T>(&'a self, g_iter: T, char_idx: usize) -> (usize, usize)
     where
         T: Iterator<Item = RopeSlice<'a>>,
@@ -103,6 +116,8 @@ impl LineFormatter for ConsoleLineFormatter {
         return (pos.0, pos.1 + last_width);
     }
 
+    /// Converts a visual 2d position into a char index within a text.
+    /// The text to be formatted is passed as a grapheme iterator.
     fn v2d_to_index<'a, T>(
         &'a self,
         g_iter: T,
@@ -135,6 +150,9 @@ impl LineFormatter for ConsoleLineFormatter {
 // ===================================================================
 // An iterator that iterates over the graphemes in a line in a
 // manner consistent with the ConsoleFormatter.
+// note: A grapheme is a sequence of one or more code points that are 
+// displayed as a single, graphical unit that a reader recognizes as 
+// a single element of the writing system. 
 // ===================================================================
 pub struct ConsoleLineFormatterVisIter<'a, T>
 where

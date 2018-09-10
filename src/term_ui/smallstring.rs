@@ -7,10 +7,12 @@ use std::str;
 
 use ropey::RopeSlice;
 
+// memeory efficent way to store a small vector
 use smallvec::SmallVec;
 
 #[derive(Clone, Default)]
 pub(crate) struct SmallString {
+    // TODO: why 8?
     buffer: SmallVec<[u8; 8]>,
 }
 
