@@ -89,6 +89,7 @@
             Ceiling,
         }
 
+        // is per buffer
         pub struct ConsoleLineFormatter {
             pub tab_width: u8,                  // how big are tabs
             pub wrap_type: WrapType,            // do we wrap lines
@@ -120,6 +121,7 @@
         use unicode_width::UnicodeWidthStr;
         use utils::{grapheme_width, RopeGraphemes};
 
+        // there is just one screen
         pub(crate) struct Screen {
             out: RefCell<AlternateScreen<RawTerminal<BufWriter<io::Stdout>>>>,
             buf: RefCell<Vec<Option<(Style, SmallString)>>>,
@@ -163,6 +165,7 @@
 
         use smallvec::SmallVec;
 
+        // TODO: how does the buffer work?
         pub(crate) struct SmallString {
             buffer: SmallVec<[u8; 8]>,
         }
@@ -185,7 +188,7 @@
         pub struct Editor {
             pub buffer: Buffer,
             pub formatter: ConsoleLineFormatter,
-            pub file_path: PathBuf,
+            pub file_path: PathBuf,  // TODO: why do editor and buffer both have this?
             pub line_ending_type: LineEnding,
             pub soft_tabs: bool,
             pub soft_tab_width: u8,
@@ -204,6 +207,7 @@
         }
 
         // lots of interesting functions here
+        // TODO: what is here vs buffer
 
     // cursor.rs
         use std::cmp::Ordering;
