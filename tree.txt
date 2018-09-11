@@ -24,20 +24,25 @@
 
 // term_ui
     // mod.rs
-        use std;
         use std::cmp::min;
+        use std::thread::sleep;
+        use std::time;
 
         use termion;
         use termion::event::{Event, Key};
         use termion::input::TermRead;
 
         use editor::Editor;
-        use formatter::{block_index_and_offset, LineFormatter, LINE_BLOCK_LENGTH};
         use string_utils::{line_ending_to_str, rope_slice_is_line_ending, LineEnding};
         use utils::{digit_count, RopeGraphemes};
+        use term_ui::formatter::block_index_and_offset;
+        use term_ui::formatter::LINE_BLOCK_LENGTH;
 
         pub mod formatter;
+
+        #[allow(dead_code)] // don't care about unused colors
         mod screen;
+        
         pub mod smallstring;
 
         use self::screen::{Color, Screen, Style};
@@ -53,22 +58,35 @@
             quit: bool,
         }
 
+        enum LoopStatus {
+            Done,
+            Continue,
+        }
+
         // other unused event loops here
 
     // formatter.rs
 
-        use std::cmp::max;
-
-        use formatter::{LineFormatter, RoundingBehavior};
         use ropey::RopeSlice;
         use string_utils::{rope_slice_is_line_ending, rope_slice_is_whitespace};
-        use utils::grapheme_width;
+        use utils::{RopeGraphemes,grapheme_width};
+        use ::buffer::Buffer;
 
-
+        #[allow(dead_code)] // haven't implemented NoWrap
         pub enum WrapType {
-            NoWrap,
+            NoWrap,    // TODO: implement this again
             CharWrap(usize),
             WordWrap(usize),
+        }
+
+        pub const LINE_BLOCK_LENGTH: usize = 1 << 12;  // 4096 i.e. 2^12
+
+        #[allow(dead_code)] // haven't implemented Ceiling
+        #[derive(Copy, Clone, PartialEq)]
+        pub enum RoundingBehavior {
+            Round,
+            Floor,
+            Ceiling,
         }
 
         pub struct ConsoleLineFormatter {
@@ -80,11 +98,17 @@
 
         // impl LineFormatter for ConsoleLineFormatter
 
+        pub fn block_index_and_offset(index: usize) -> (usize, usize);
+
+        pub fn last_block_index(gc: usize) -> usize;
+
+
     // screen.rs
-        use std;
         use std::cell::RefCell;
         use std::io;
         use std::io::{BufWriter, Write};
+        use std::iter;
+        use std::fmt;
 
         use super::smallstring::SmallString;
         use ropey::RopeSlice;
@@ -149,8 +173,8 @@
 
         use self::cursor::CursorSet;
         use buffer::Buffer;
-        use formatter::LineFormatter;
-        use formatter::RoundingBehavior::*;
+        use ::term_ui::formatter::ConsoleLineFormatter;
+        use ::term_ui::formatter::RoundingBehavior::*;
         use std::cmp::{max, min};
         use std::path::{Path, PathBuf};
         use string_utils::{char_count, rope_slice_to_line_ending, LineEnding};
@@ -187,7 +211,7 @@
         use std::slice::{Iter, IterMut};
 
         use buffer::Buffer;
-        use formatter::LineFormatter;
+        use ::term_ui::formatter::ConsoleLineFormatter;
 
         pub struct Cursor {
             pub range: (usize, usize), // start, end
@@ -198,20 +222,10 @@
             cursors: Vec<Cursor>,
         }
 
-// formatter.rs
-
-    use buffer::Buffer;
-    use ropey::RopeSlice;
-    use std::cmp::min;
-    use utils::RopeGraphemes;
-
-    pub enum RoundingBehavior {
-        Round,
-        Floor,
-        Ceiling,
-    }
-
-    pub trait LineFormatter;
+        // note: this method ties things together
+        // maybe do this outside of object,
+        // to reduce dependency
+        fn update_vis_start(&mut self, buf: &Buffer, formatter : &ConsoleLineFormatter);
 
 // buffer
     // mod.rs
@@ -223,8 +237,7 @@
 
         use self::undo_stack::Operation::*;
         use self::undo_stack::UndoStack;
-        use ropey;
-        use ropey::{Rope, RopeSlice};
+        use ropey::{Rope, RopeSlice, iter};
         use string_utils::char_count;
         use utils::{is_grapheme_boundary, next_grapheme_boundary, prev_grapheme_boundary, RopeGraphemes};
 

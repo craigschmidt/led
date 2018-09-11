@@ -1,4 +1,4 @@
-use std;
+use std; // note: seems cleaner to leave this in
 
 use std::borrow::Borrow;
 use std::ops::Deref;

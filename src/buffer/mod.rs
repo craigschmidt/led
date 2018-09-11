@@ -7,8 +7,7 @@ use std::path::{Path, PathBuf};
 
 use self::undo_stack::Operation::*;
 use self::undo_stack::UndoStack;
-use ropey;
-use ropey::{Rope, RopeSlice};
+use ropey::{Rope, RopeSlice, iter};
 use string_utils::char_count;
 use utils::{is_grapheme_boundary, next_grapheme_boundary, prev_grapheme_boundary, RopeGraphemes};
 
@@ -366,11 +365,11 @@ impl Buffer {
         RopeGraphemes::new(&self.text.slice(index..len))
     }
 
-    pub fn line_iter<'a>(&'a self) -> ropey::iter::Lines<'a> {
+    pub fn line_iter<'a>(&'a self) -> iter::Lines<'a> {
         self.text.lines()
     }
 
-    pub fn line_iter_at_index<'a>(&'a self, line_idx: usize) -> ropey::iter::Lines<'a> {
+    pub fn line_iter_at_index<'a>(&'a self, line_idx: usize) -> iter::Lines<'a> {
         let start = self.text.line_to_char(line_idx);
         self.text.slice(start..).lines()
     }

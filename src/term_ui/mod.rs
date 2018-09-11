@@ -1,13 +1,12 @@
-use std;
 use std::cmp::min;
+use std::thread::sleep;
+use std::time;
 
 use termion;
 use termion::event::{Event, Key};
 use termion::input::TermRead;
 
-// use self::formatter::ConsoleLineFormatter;
 use editor::Editor;
-// use formatter::{block_index_and_offset, LineFormatter, LINE_BLOCK_LENGTH};
 use string_utils::{line_ending_to_str, rope_slice_is_line_ending, LineEnding};
 use utils::{digit_count, RopeGraphemes};
 use term_ui::formatter::block_index_and_offset;
@@ -83,7 +82,7 @@ macro_rules! ui_loop {
             }
 
             // Sleep for a small bit so we don't just spin on the CPU
-            std::thread::sleep(std::time::Duration::from_millis(5));
+            sleep(time::Duration::from_millis(5));
         }
     };
 }

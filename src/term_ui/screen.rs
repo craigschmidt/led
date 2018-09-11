@@ -1,7 +1,9 @@
-use std;
+// use std;
 use std::cell::RefCell;
 use std::io;
 use std::io::{BufWriter, Write};
+use std::iter;
+use std::fmt;
 
 use super::smallstring::SmallString;
 use ropey::RopeSlice;
@@ -23,7 +25,7 @@ pub(crate) struct Screen {
 impl Screen {
     pub(crate) fn new() -> Self {
         let (w, h) = termion::terminal_size().unwrap();
-        let buf = std::iter::repeat(Some((Style(Color::Black, Color::Black), " ".into())))
+        let buf = iter::repeat(Some((Style(Color::Black, Color::Black), " ".into())))
             .take(w as usize * h as usize)
             .collect();
         Screen {
@@ -180,8 +182,8 @@ pub(crate) enum Color {
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub(crate) struct Style(pub Color, pub Color); // Fg, Bg
 
-impl std::fmt::Display for Style {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for Style {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
             Color::Black => write!(f, "{}", color::Fg(color::Black)),
             Color::Blue => write!(f, "{}", color::Fg(color::Blue)),
