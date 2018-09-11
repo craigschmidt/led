@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code)] // lots of unused stuff here
 //! Misc helpful utility functions for TextBuffer related stuff.
 
 use ropey::RopeSlice;

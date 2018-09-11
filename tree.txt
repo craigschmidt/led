@@ -1,8 +1,15 @@
+// study use of update_vis_start in cursor
+// rename ConsoleLineFormatter as LineFormatter
+// redo tree.txt
+// add keystrokes to  editor.mod.rs
+// for  remove_text_inside_cursor
+// cursor_to_beginning_of_buffer
+// cursor_to_end_of_buffer
+
 // main.rs
     use docopt::Docopt;
     use editor::Editor;
     use std::path::Path;
-    use term_ui::formatter::ConsoleLineFormatter;
     use term_ui::TermUI;
 
     mod buffer;
@@ -24,7 +31,6 @@
         use termion::event::{Event, Key};
         use termion::input::TermRead;
 
-        use self::formatter::ConsoleLineFormatter;
         use editor::Editor;
         use formatter::{block_index_and_offset, LineFormatter, LINE_BLOCK_LENGTH};
         use string_utils::{line_ending_to_str, rope_slice_is_line_ending, LineEnding};
@@ -41,7 +47,7 @@
         pub struct TermUI {
             inp: termion::input::Events<termion::AsyncReader>,
             screen: Screen,
-            editor: Editor<ConsoleLineFormatter>,
+            editor: Editor,
             width: usize,
             height: usize,
             quit: bool,
@@ -152,9 +158,9 @@
 
         mod cursor;
 
-        pub struct Editor<T: LineFormatter> {
+        pub struct Editor {
             pub buffer: Buffer,
-            pub formatter: T,
+            pub formatter: ConsoleLineFormatter,
             pub file_path: PathBuf,
             pub line_ending_type: LineEnding,
             pub soft_tabs: bool,

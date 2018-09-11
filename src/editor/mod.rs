@@ -1,11 +1,9 @@
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 
 use self::cursor::CursorSet;
 use buffer::Buffer;
-use formatter::LineFormatter;
-use formatter::RoundingBehavior::*;
+use ::term_ui::formatter::ConsoleLineFormatter;
+use ::term_ui::formatter::RoundingBehavior::*;
 use std::cmp::{max, min};
 use std::path::{Path, PathBuf};
 use string_utils::{char_count, rope_slice_to_line_ending, LineEnding};
@@ -13,9 +11,9 @@ use utils::{digit_count, RopeGraphemes};
 
 mod cursor;
 
-pub struct Editor<T: LineFormatter> {
+pub struct Editor {
     pub buffer: Buffer,
-    pub formatter: T,
+    pub formatter: ConsoleLineFormatter,
     pub file_path: PathBuf,
     pub line_ending_type: LineEnding,
     pub soft_tabs: bool,
@@ -34,12 +32,12 @@ pub struct Editor<T: LineFormatter> {
     pub cursors: CursorSet,
 }
 
-impl<T: LineFormatter> Editor<T> {
+impl Editor {
     /// Create a new blank editor
-    pub fn new(formatter: T) -> Editor<T> {
+    pub fn new() -> Editor {
         Editor {
             buffer: Buffer::new(),
-            formatter: formatter,
+            formatter: ConsoleLineFormatter::new(4),
             file_path: PathBuf::new(),
             line_ending_type: LineEnding::LF,
             soft_tabs: false,
@@ -52,7 +50,7 @@ impl<T: LineFormatter> Editor<T> {
         }
     }
 
-    pub fn new_from_file(formatter: T, path: &Path) -> Editor<T> {
+    pub fn new_from_file(path: &Path) -> Editor {
         let buf = match Buffer::new_from_file(path) {
             Ok(b) => b,
             // TODO: handle un-openable file better
@@ -61,7 +59,7 @@ impl<T: LineFormatter> Editor<T> {
 
         let mut ed = Editor {
             buffer: buf,
-            formatter: formatter,
+            formatter: ConsoleLineFormatter::new(4),
             file_path: path.to_path_buf(),
             line_ending_type: LineEnding::LF,
             soft_tabs: false,
@@ -276,7 +274,7 @@ impl<T: LineFormatter> Editor<T> {
             self.cursors.truncate(1);
             self.cursors[0].range.0 = pos;
             self.cursors[0].range.1 = pos;
-            self.cursors[0].update_vis_start(&(self.buffer), &(self.formatter));
+            self.cursors[0].update_vis_start(&(self.buffer),&(self.formatter));
 
             self.move_view_to_cursor();
 
@@ -292,7 +290,7 @@ impl<T: LineFormatter> Editor<T> {
             self.cursors.truncate(1);
             self.cursors[0].range.0 = pos;
             self.cursors[0].range.1 = pos;
-            self.cursors[0].update_vis_start(&(self.buffer), &(self.formatter));
+            self.cursors[0].update_vis_start(&(self.buffer),&(self.formatter));
 
             self.move_view_to_cursor();
 
@@ -351,7 +349,7 @@ impl<T: LineFormatter> Editor<T> {
             // Move cursor
             c.range.0 += str_len + offset;
             c.range.1 += str_len + offset;
-            c.update_vis_start(&(self.buffer), &(self.formatter));
+            c.update_vis_start(&(self.buffer),&(self.formatter));
 
             // Update offset
             offset += str_len;
@@ -391,7 +389,7 @@ impl<T: LineFormatter> Editor<T> {
                 // Move cursor
                 c.range.0 += space_count;
                 c.range.1 += space_count;
-                c.update_vis_start(&(self.buffer), &(self.formatter));
+                c.update_vis_start(&(self.buffer),&(self.formatter));
 
                 // Update offset
                 offset += space_count;
@@ -432,7 +430,7 @@ impl<T: LineFormatter> Editor<T> {
             // Move cursor
             c.range.0 -= len;
             c.range.1 -= len;
-            c.update_vis_start(&(self.buffer), &(self.formatter));
+            c.update_vis_start(&(self.buffer),&(self.formatter));
 
             // Update offset
             offset += len;
@@ -466,7 +464,7 @@ impl<T: LineFormatter> Editor<T> {
             self.dirty = true;
 
             // Move cursor
-            c.update_vis_start(&(self.buffer), &(self.formatter));
+            c.update_vis_start(&(self.buffer),&(self.formatter));
 
             // Update offset
             offset += len;
@@ -478,7 +476,8 @@ impl<T: LineFormatter> Editor<T> {
         self.move_view_to_cursor();
     }
 
-    pub fn remove_text_inside_cursor(&mut self) {
+    // note: unused
+    pub fn _remove_text_inside_cursor(&mut self) {
         self.cursors.make_consistent();
 
         let mut offset = 0;
@@ -503,7 +502,7 @@ impl<T: LineFormatter> Editor<T> {
                 offset += len;
             }
 
-            c.update_vis_start(&(self.buffer), &(self.formatter));
+            c.update_vis_start(&(self.buffer),&(self.formatter));
         }
 
         self.cursors.make_consistent();
@@ -512,22 +511,23 @@ impl<T: LineFormatter> Editor<T> {
         self.move_view_to_cursor();
     }
 
-    pub fn cursor_to_beginning_of_buffer(&mut self) {
+    // note: unused
+    pub fn _cursor_to_beginning_of_buffer(&mut self) {
         self.cursors = CursorSet::new();
 
         self.cursors[0].range = (0, 0);
-        self.cursors[0].update_vis_start(&(self.buffer), &(self.formatter));
+        self.cursors[0].update_vis_start(&(self.buffer),&(self.formatter));
 
         // Adjust view
         self.move_view_to_cursor();
     }
 
-    pub fn cursor_to_end_of_buffer(&mut self) {
+    pub fn _cursor_to_end_of_buffer(&mut self) {
         let end = self.buffer.char_count();
 
         self.cursors = CursorSet::new();
         self.cursors[0].range = (end, end);
-        self.cursors[0].update_vis_start(&(self.buffer), &(self.formatter));
+        self.cursors[0].update_vis_start(&(self.buffer),&(self.formatter));
 
         // Adjust view
         self.move_view_to_cursor();
@@ -537,7 +537,7 @@ impl<T: LineFormatter> Editor<T> {
         for c in self.cursors.iter_mut() {
             c.range.0 = self.buffer.nth_prev_grapheme(c.range.0, n);
             c.range.1 = c.range.0;
-            c.update_vis_start(&(self.buffer), &(self.formatter));
+            c.update_vis_start(&(self.buffer),&(self.formatter));
         }
 
         // Adjust view
@@ -548,7 +548,7 @@ impl<T: LineFormatter> Editor<T> {
         for c in self.cursors.iter_mut() {
             c.range.1 = self.buffer.nth_next_grapheme(c.range.1, n);
             c.range.0 = c.range.1;
-            c.update_vis_start(&(self.buffer), &(self.formatter));
+            c.update_vis_start(&(self.buffer),&(self.formatter));
         }
 
         // Adjust view
@@ -580,7 +580,7 @@ impl<T: LineFormatter> Editor<T> {
                 // We were already at the top.
                 c.range.0 = 0;
                 c.range.1 = 0;
-                c.update_vis_start(&(self.buffer), &(self.formatter));
+                c.update_vis_start(&(self.buffer),&(self.formatter));
             } else {
                 c.range.0 = temp_index;
                 c.range.1 = temp_index;
@@ -616,7 +616,7 @@ impl<T: LineFormatter> Editor<T> {
                 // We were already at the bottom.
                 c.range.0 = self.buffer.char_count();
                 c.range.1 = self.buffer.char_count();
-                c.update_vis_start(&(self.buffer), &(self.formatter));
+                c.update_vis_start(&(self.buffer),&(self.formatter));
             } else {
                 c.range.0 = temp_index;
                 c.range.1 = temp_index;

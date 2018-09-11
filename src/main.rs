@@ -19,12 +19,11 @@ extern crate unicode_width;
 use docopt::Docopt;
 use editor::Editor;
 use std::path::Path;
-use term_ui::formatter::ConsoleLineFormatter;
 use term_ui::TermUI;
 
 mod buffer;
 mod editor;
-mod formatter;
+// mod formatter;
 mod string_utils;
 mod term_ui;
 mod utils;
@@ -59,9 +58,9 @@ fn main() {
     // Load file, if specified
     // TODO: stopped here ....
     let editor = if let Option::Some(s) = args.arg_file {
-        Editor::new_from_file(ConsoleLineFormatter::new(4), &Path::new(&s[..]))
+        Editor::new_from_file(&Path::new(&s[..]))
     } else {
-        Editor::new(ConsoleLineFormatter::new(4))
+        Editor::new()
     };
 
     // Initialize and start UI

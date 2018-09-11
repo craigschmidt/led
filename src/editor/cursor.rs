@@ -1,11 +1,9 @@
-#![allow(dead_code)]
-
 use std::cmp::Ordering;
 use std::ops::{Index, IndexMut};
 use std::slice::{Iter, IterMut};
 
 use buffer::Buffer;
-use formatter::LineFormatter;
+use ::term_ui::formatter::ConsoleLineFormatter;
 
 /// A text cursor.  Also represents selections when range.0 != range.1.
 ///
@@ -27,8 +25,9 @@ impl Cursor {
         }
     }
 
-    pub fn update_vis_start<T: LineFormatter>(&mut self, buf: &Buffer, f: &T) {
-        self.vis_start = f.index_to_horizontal_v2d(buf, self.range.0);
+    pub fn update_vis_start(&mut self, buf: &Buffer, formatter : &ConsoleLineFormatter) {
+        // TODO: how do we get self here?
+        self.vis_start = formatter.index_to_horizontal_v2d(buf, self.range.0);
     }
 }
 
@@ -45,7 +44,8 @@ impl CursorSet {
         }
     }
 
-    pub fn add_cursor(&mut self, cursor: Cursor) {
+    // note: unused
+    pub fn _add_cursor(&mut self, cursor: Cursor) {
         self.cursors.push(cursor);
         self.make_consistent();
     }

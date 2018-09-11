@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std;
 use std::cmp::min;
 
@@ -7,14 +5,19 @@ use termion;
 use termion::event::{Event, Key};
 use termion::input::TermRead;
 
-use self::formatter::ConsoleLineFormatter;
+// use self::formatter::ConsoleLineFormatter;
 use editor::Editor;
-use formatter::{block_index_and_offset, LineFormatter, LINE_BLOCK_LENGTH};
+// use formatter::{block_index_and_offset, LineFormatter, LINE_BLOCK_LENGTH};
 use string_utils::{line_ending_to_str, rope_slice_is_line_ending, LineEnding};
 use utils::{digit_count, RopeGraphemes};
+use term_ui::formatter::block_index_and_offset;
+use term_ui::formatter::LINE_BLOCK_LENGTH;
 
 pub mod formatter;
+
+#[allow(dead_code)] // don't care about unused colors
 mod screen;
+
 pub mod smallstring;
 
 use self::screen::{Color, Screen, Style};
@@ -88,7 +91,7 @@ macro_rules! ui_loop {
 pub struct TermUI {
     inp: termion::input::Events<termion::AsyncReader>,
     screen: Screen,
-    editor: Editor<ConsoleLineFormatter>,
+    editor: Editor,
     width: usize,
     height: usize,
     quit: bool,
@@ -101,11 +104,12 @@ enum LoopStatus {
 }
 
 impl TermUI {
-    pub fn new() -> TermUI {
-        TermUI::new_from_editor(Editor::new(ConsoleLineFormatter::new(4)))
-    }
 
-    pub fn new_from_editor(ed: Editor<ConsoleLineFormatter>) -> TermUI {
+    // pub fn new() -> TermUI {
+    //     TermUI::new_from_editor(Editor::new())
+    // }
+
+    pub fn new_from_editor(ed: Editor) -> TermUI {
         let (w, h) = termion::terminal_size().unwrap();
         let mut editor = ed;
         editor.update_dim(h as usize - 1, w as usize);
@@ -302,7 +306,7 @@ impl TermUI {
 
     fn draw_editor(
         &self,
-        editor: &Editor<ConsoleLineFormatter>,
+        editor: &Editor,
         c1: (usize, usize),
         c2: (usize, usize),
     ) {
@@ -358,7 +362,7 @@ impl TermUI {
 
     fn draw_editor_text(
         &self,
-        editor: &Editor<ConsoleLineFormatter>,
+        editor: &Editor,
         c1: (usize, usize),
         c2: (usize, usize),
     ) {

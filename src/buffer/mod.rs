@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code)] // TODO: lots of unused stuff
 
 use std::fs::File;
 use std::io;

@@ -94,8 +94,9 @@ impl SmallString {
         self.buffer.set_len(len + amt);
     }
 
+    // note: not being used
     #[inline(always)]
-    unsafe fn remove_bytes(&mut self, start: usize, end: usize) {
+    unsafe fn _remove_bytes(&mut self, start: usize, end: usize) {
         assert!(start <= end);
         assert!(end <= self.len());
         let len = self.len();
