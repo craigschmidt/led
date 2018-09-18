@@ -4,7 +4,7 @@ use std::cmp::{min,max};
 use ropey::RopeSlice;
 use string_utils::{rope_slice_is_line_ending, rope_slice_is_whitespace};
 use utils::{RopeGraphemes,grapheme_width};
-use ::buffer::Buffer;
+use editor::buffer::Buffer;
 
 // line wrap style
 #[allow(dead_code)] // haven't implemented NoWrap

@@ -21,7 +21,7 @@ use editor::Editor;
 use std::path::Path;
 use term_ui::TermUI;
 
-mod buffer;
+// mod buffer;
 mod editor;
 // mod formatter;
 mod string_utils;

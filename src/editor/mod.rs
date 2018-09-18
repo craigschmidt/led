@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use self::cursor::CursorSet;
-use buffer::Buffer;
+use self::buffer::Buffer;
 use self::formatter::LineFormatter;
 use self::formatter::LineFormatterVisIter;
 use self::formatter::RoundingBehavior::*;
@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use string_utils::{char_count, rope_slice_to_line_ending, LineEnding};
 use utils::{digit_count, RopeGraphemes};
 
+mod buffer;
 mod cursor;
 mod formatter;
 
