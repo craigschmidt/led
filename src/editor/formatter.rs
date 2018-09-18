@@ -33,17 +33,17 @@ pub enum RoundingBehavior {
 // it takes care of converting tabs to spaces, and handling word wrap (if enabled)
 // ===================================================================
 
-pub struct ConsoleLineFormatter {
+pub struct LineFormatter {
     pub tab_width: u8,                  // how big are tabs
     pub wrap_type: WrapType,            // do we wrap lines
     pub maintain_indent: bool,          // TODO: what's this do
     pub wrap_additional_indent: usize,  // any extra indentation on wrapped lines
 }
 
-impl ConsoleLineFormatter {
+impl LineFormatter {
 
-    pub fn new(tab_width: u8) -> ConsoleLineFormatter {
-        ConsoleLineFormatter {
+    pub fn new(tab_width: u8) -> LineFormatter {
+        LineFormatter {
             tab_width: tab_width,
             wrap_type: WrapType::WordWrap(40),  // a default, really set by set_wrap_width
             maintain_indent: true,
@@ -293,11 +293,11 @@ impl ConsoleLineFormatter {
     // to iterate over the graphemes
     // a grapheme cluster is text that should be kept together
     // like a letter and associated accent marks
-    pub fn iter<'a, T>(&'a self, g_iter: T) -> ConsoleLineFormatterVisIter<'a, T>
+    pub fn iter<'a, T>(&'a self, g_iter: T) -> LineFormatterVisIter<'a, T>
     where
         T: Iterator<Item = RopeSlice<'a>>,
     {
-        ConsoleLineFormatterVisIter::<'a, T> {
+        LineFormatterVisIter::<'a, T> {
             grapheme_iter: g_iter,
             f: self,
             pos: (0, 0),
@@ -334,12 +334,12 @@ pub fn last_block_index(gc: usize) -> usize {
 // displayed as a single, graphical unit that a reader recognizes as 
 // a single element of the writing system. 
 // ===================================================================
-pub struct ConsoleLineFormatterVisIter<'a, T>
+pub struct LineFormatterVisIter<'a, T>
 where
     T: Iterator<Item = RopeSlice<'a>>,
 {
     grapheme_iter: T,
-    f: &'a ConsoleLineFormatter,
+    f: &'a LineFormatter,
     pos: (usize, usize),
 
     indent: usize,
@@ -349,7 +349,7 @@ where
     word_i: usize,
 }
 
-impl<'a, T> ConsoleLineFormatterVisIter<'a, T>
+impl<'a, T> LineFormatterVisIter<'a, T>
 where
     T: Iterator<Item = RopeSlice<'a>>,
 {
@@ -411,7 +411,7 @@ where
     }
 }
 
-impl<'a, T> Iterator for ConsoleLineFormatterVisIter<'a, T>
+impl<'a, T> Iterator for LineFormatterVisIter<'a, T>
 where
     T: Iterator<Item = RopeSlice<'a>>,
 {
@@ -524,7 +524,7 @@ mod tests {
     fn dimensions_1() {
         let text = Rope::from_str("Hello there, stranger!"); // 22 graphemes long
 
-        let mut f = ConsoleLineFormatter::new(4);
+        let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
         f.maintain_indent = false;
         f.wrap_additional_indent = 0;
@@ -537,7 +537,7 @@ mod tests {
     fn dimensions_2() {
         let text = Rope::from_str("Hello there, stranger!  How are you doing this fine day?"); // 56 graphemes long
 
-        let mut f = ConsoleLineFormatter::new(4);
+        let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
         f.maintain_indent = false;
         f.wrap_additional_indent = 0;
@@ -562,7 +562,7 @@ mod tests {
              。",
         );
 
-        let mut f = ConsoleLineFormatter::new(4);
+        let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
         f.maintain_indent = false;
         f.wrap_additional_indent = 0;
@@ -587,7 +587,7 @@ mod tests {
              。",
         );
 
-        let mut f = ConsoleLineFormatter::new(4);
+        let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::WordWrap(0);
         f.maintain_indent = false;
         f.wrap_additional_indent = 0;
@@ -600,7 +600,7 @@ mod tests {
     fn index_to_v2d_1() {
         let text = Rope::from_str("Hello there, stranger!"); // 22 graphemes long
 
-        let mut f = ConsoleLineFormatter::new(4);
+        let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
         f.maintain_indent = false;
         f.wrap_additional_indent = 0;
@@ -628,7 +628,7 @@ mod tests {
     fn index_to_v2d_2() {
         let text = Rope::from_str("Hello there, stranger!  How are you doing this fine day?"); // 56 graphemes long
 
-        let mut f = ConsoleLineFormatter::new(4);
+        let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
         f.maintain_indent = false;
         f.wrap_additional_indent = 0;
@@ -709,7 +709,7 @@ mod tests {
     fn v2d_to_index_1() {
         let text = Rope::from_str("Hello there, stranger!"); // 22 graphemes long
 
-        let mut f = ConsoleLineFormatter::new(4);
+        let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
         f.maintain_indent = false;
         f.wrap_additional_indent = 0;
@@ -745,7 +745,7 @@ mod tests {
     fn v2d_to_index_2() {
         let text = Rope::from_str("Hello there, stranger!  How are you doing this fine day?"); // 56 graphemes long
 
-        let mut f = ConsoleLineFormatter::new(4);
+        let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
         f.maintain_indent = false;
         f.wrap_additional_indent = 0;
@@ -825,7 +825,7 @@ mod tests {
     fn index_to_horizontal_v2d_1() {
         let b = Buffer::new_from_str("Hello there, stranger!\nHow are you doing this fine day?"); // 55 graphemes long
 
-        let mut f = ConsoleLineFormatter::new(4);
+        let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
         f.maintain_indent = false;
         f.wrap_additional_indent = 0;
@@ -842,7 +842,7 @@ mod tests {
     fn index_to_horizontal_v2d_2() {
         let b = Buffer::new_from_str("Hello there, stranger!\nHow are you doing this fine day?"); // 55 graphemes long
 
-        let mut f = ConsoleLineFormatter::new(4);
+        let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
         f.maintain_indent = false;
         f.wrap_additional_indent = 0;
@@ -869,7 +869,7 @@ mod tests {
     fn index_set_horizontal_v2d_1() {
         let b = Buffer::new_from_str("Hello there, stranger!\nHow are you doing this fine day?"); // 55 graphemes long
 
-        let mut f = ConsoleLineFormatter::new(4);
+        let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
         f.maintain_indent = false;
         f.wrap_additional_indent = 0;
@@ -904,7 +904,7 @@ mod tests {
     fn index_set_horizontal_v2d_2() {
         let b = Buffer::new_from_str("Hello there, stranger! How are you doing this fine day?"); // 55 graphemes long
 
-        let mut f = ConsoleLineFormatter::new(4);
+        let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
         f.maintain_indent = false;
         f.wrap_additional_indent = 0;
@@ -939,7 +939,7 @@ mod tests {
     fn index_offset_vertical_v2d_1() {
         let b = Buffer::new_from_str("Hello there, stranger!\nHow are you doing this fine day?"); // 55 graphemes long
 
-        let mut f = ConsoleLineFormatter::new(4);
+        let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
         f.maintain_indent = false;
         f.wrap_additional_indent = 0;
@@ -966,7 +966,7 @@ mod tests {
     fn index_offset_vertical_v2d_2() {
         let b = Buffer::new_from_str("Hello there, stranger! How are you doing this fine day?"); // 55 graphemes long
 
-        let mut f = ConsoleLineFormatter::new(4);
+        let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
         f.maintain_indent = false;
         f.wrap_additional_indent = 0;

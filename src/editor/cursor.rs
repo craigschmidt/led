@@ -2,9 +2,6 @@ use std::cmp::Ordering;
 use std::ops::{Index, IndexMut};
 use std::slice::{Iter, IterMut};
 
-use buffer::Buffer;
-use ::term_ui::formatter::ConsoleLineFormatter;
-
 /// A text cursor.  Also represents selections when range.0 != range.1.
 ///
 /// `range` is a pair of 1d grapheme indexes into the text.
@@ -23,11 +20,6 @@ impl Cursor {
             range: (0, 0),
             vis_start: 0,
         }
-    }
-
-    pub fn update_vis_start(&mut self, buf: &Buffer, formatter : &ConsoleLineFormatter) {
-        // TODO: how do we get self here?
-        self.vis_start = formatter.index_to_horizontal_v2d(buf, self.range.0);
     }
 }
 

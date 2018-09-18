@@ -2,18 +2,23 @@ use std::collections::HashMap;
 
 use self::cursor::CursorSet;
 use buffer::Buffer;
-use ::term_ui::formatter::ConsoleLineFormatter;
-use ::term_ui::formatter::RoundingBehavior::*;
+use self::formatter::LineFormatter;
+use self::formatter::LineFormatterVisIter;
+use self::formatter::RoundingBehavior::*;
+use self::formatter::LINE_BLOCK_LENGTH;
+use self::formatter::block_index_and_offset;
+use ropey::{RopeSlice,iter};
 use std::cmp::{max, min};
 use std::path::{Path, PathBuf};
 use string_utils::{char_count, rope_slice_to_line_ending, LineEnding};
 use utils::{digit_count, RopeGraphemes};
 
 mod cursor;
+mod formatter;
 
 pub struct Editor {
-    pub buffer: Buffer,
-    pub formatter: ConsoleLineFormatter,
+    buffer: Buffer,
+    formatter: LineFormatter,
     pub file_path: PathBuf,
     pub line_ending_type: LineEnding,
     pub soft_tabs: bool,
@@ -37,7 +42,7 @@ impl Editor {
     pub fn new() -> Editor {
         Editor {
             buffer: Buffer::new(),
-            formatter: ConsoleLineFormatter::new(4),
+            formatter: LineFormatter::new(4),
             file_path: PathBuf::new(),
             line_ending_type: LineEnding::LF,
             soft_tabs: false,
@@ -59,7 +64,7 @@ impl Editor {
 
         let mut ed = Editor {
             buffer: buf,
-            formatter: ConsoleLineFormatter::new(4),
+            formatter: LineFormatter::new(4),
             file_path: path.to_path_buf(),
             line_ending_type: LineEnding::LF,
             soft_tabs: false,
@@ -75,7 +80,7 @@ impl Editor {
         // let mut cur = Cursor::new();
         // cur.range.0 = 30;
         // cur.range.1 = 30;
-        // cur.update_vis_start(&(ed.buffer), &(ed.formatter));
+        // ed.update_vis_start(&mut cur);
         // ed.cursors.add_cursor(cur);
 
         ed.auto_detect_line_ending();
@@ -268,14 +273,30 @@ impl Editor {
         }
     }
 
+
+    // // note: this ties the buffer, the formatter and a cursor together
+    // // takes c.range.0 as the cursor start
+    // pub fn calc_vis_start(& self, cursor_start : usize) -> usize {
+    //     // TODO: lets move this to editor
+    //     self.formatter.index_to_horizontal_v2d(&self.buffer, cursor_start)
+    // }
+
+    // // c.vis_start = self.formatter.index_to_horizontal_v2d(&self.buffer, c.range.0)
+
+    // // note: this ties the buffer, the formatter and a cursor together
+    // pub fn update_vis_start(&mut self, c: &mut Cursor) {
+    //     // TODO: lets move this to editor
+    //     let vis_start = self.calc_vis_start(c.range.0);
+    //     c.vis_start = vis_start;
+    // }
+
     pub fn undo(&mut self) {
         // TODO: handle multiple cursors properly
         if let Some(pos) = self.buffer.undo() {
             self.cursors.truncate(1);
             self.cursors[0].range.0 = pos;
             self.cursors[0].range.1 = pos;
-            self.cursors[0].update_vis_start(&(self.buffer),&(self.formatter));
-
+            self.cursors[0].vis_start = self.formatter.index_to_horizontal_v2d(&self.buffer, self.cursors[0].range.0);
             self.move_view_to_cursor();
 
             self.dirty = true;
@@ -290,8 +311,7 @@ impl Editor {
             self.cursors.truncate(1);
             self.cursors[0].range.0 = pos;
             self.cursors[0].range.1 = pos;
-            self.cursors[0].update_vis_start(&(self.buffer),&(self.formatter));
-
+            self.cursors[0].vis_start = self.formatter.index_to_horizontal_v2d(&self.buffer, self.cursors[0].range.0);
             self.move_view_to_cursor();
 
             self.dirty = true;
@@ -349,7 +369,7 @@ impl Editor {
             // Move cursor
             c.range.0 += str_len + offset;
             c.range.1 += str_len + offset;
-            c.update_vis_start(&(self.buffer),&(self.formatter));
+            c.vis_start = self.formatter.index_to_horizontal_v2d(&self.buffer, c.range.0);
 
             // Update offset
             offset += str_len;
@@ -389,7 +409,7 @@ impl Editor {
                 // Move cursor
                 c.range.0 += space_count;
                 c.range.1 += space_count;
-                c.update_vis_start(&(self.buffer),&(self.formatter));
+                c.vis_start = self.formatter.index_to_horizontal_v2d(&self.buffer, c.range.0);
 
                 // Update offset
                 offset += space_count;
@@ -430,7 +450,7 @@ impl Editor {
             // Move cursor
             c.range.0 -= len;
             c.range.1 -= len;
-            c.update_vis_start(&(self.buffer),&(self.formatter));
+            c.vis_start = self.formatter.index_to_horizontal_v2d(&self.buffer, c.range.0);
 
             // Update offset
             offset += len;
@@ -464,7 +484,7 @@ impl Editor {
             self.dirty = true;
 
             // Move cursor
-            c.update_vis_start(&(self.buffer),&(self.formatter));
+            c.vis_start = self.formatter.index_to_horizontal_v2d(&self.buffer, c.range.0);
 
             // Update offset
             offset += len;
@@ -502,7 +522,7 @@ impl Editor {
                 offset += len;
             }
 
-            c.update_vis_start(&(self.buffer),&(self.formatter));
+            c.vis_start = self.formatter.index_to_horizontal_v2d(&self.buffer, c.range.0);
         }
 
         self.cursors.make_consistent();
@@ -516,7 +536,7 @@ impl Editor {
         self.cursors = CursorSet::new();
 
         self.cursors[0].range = (0, 0);
-        self.cursors[0].update_vis_start(&(self.buffer),&(self.formatter));
+        self.cursors[0].vis_start = self.formatter.index_to_horizontal_v2d(&self.buffer, self.cursors[0].range.0);
 
         // Adjust view
         self.move_view_to_cursor();
@@ -527,7 +547,7 @@ impl Editor {
 
         self.cursors = CursorSet::new();
         self.cursors[0].range = (end, end);
-        self.cursors[0].update_vis_start(&(self.buffer),&(self.formatter));
+        self.cursors[0].vis_start = self.formatter.index_to_horizontal_v2d(&self.buffer, self.cursors[0].range.0);
 
         // Adjust view
         self.move_view_to_cursor();
@@ -537,7 +557,7 @@ impl Editor {
         for c in self.cursors.iter_mut() {
             c.range.0 = self.buffer.nth_prev_grapheme(c.range.0, n);
             c.range.1 = c.range.0;
-            c.update_vis_start(&(self.buffer),&(self.formatter));
+            c.vis_start = self.formatter.index_to_horizontal_v2d(&self.buffer, c.range.0);
         }
 
         // Adjust view
@@ -548,7 +568,7 @@ impl Editor {
         for c in self.cursors.iter_mut() {
             c.range.1 = self.buffer.nth_next_grapheme(c.range.1, n);
             c.range.0 = c.range.1;
-            c.update_vis_start(&(self.buffer),&(self.formatter));
+            c.vis_start = self.formatter.index_to_horizontal_v2d(&self.buffer, c.range.0);
         }
 
         // Adjust view
@@ -580,7 +600,8 @@ impl Editor {
                 // We were already at the top.
                 c.range.0 = 0;
                 c.range.1 = 0;
-                c.update_vis_start(&(self.buffer),&(self.formatter));
+                c.vis_start = self.formatter.index_to_horizontal_v2d(&self.buffer, c.range.0);
+
             } else {
                 c.range.0 = temp_index;
                 c.range.1 = temp_index;
@@ -616,7 +637,8 @@ impl Editor {
                 // We were already at the bottom.
                 c.range.0 = self.buffer.char_count();
                 c.range.1 = self.buffer.char_count();
-                c.update_vis_start(&(self.buffer),&(self.formatter));
+                c.vis_start = self.formatter.index_to_horizontal_v2d(&self.buffer, c.range.0);
+
             } else {
                 c.range.0 = temp_index;
                 c.range.1 = temp_index;
@@ -673,4 +695,84 @@ impl Editor {
         // Adjust view
         self.move_view_to_cursor();
     }
+
+    // encapsulate buffer routines
+
+    /// Converts a line number and char-column number into a char index.
+    // map to pos tuple
+    pub fn line_col_to_index(&self, line_index: usize, line_block_index : usize) -> usize {
+        self.buffer.line_col_to_index((line_index, line_block_index * LINE_BLOCK_LENGTH))
+    }
+
+    /// Converts a char index into a line number and char-column
+    /// number.
+    ///
+    /// If the index is off the end of the text, returns the line and column
+    /// number of the last valid text position.
+    pub fn index_to_line_col(&self, pos: usize) -> (usize, usize) {
+        self.buffer.index_to_line_col(pos)
+    }
+
+    pub fn char_count(&self) -> usize {
+        self.buffer.char_count()
+    } 
+
+    pub fn line_iter_at_index<'a>(&'a self, line_idx: usize) -> iter::Lines<'a> {
+        self.buffer.line_iter_at_index(line_idx)
+    }
+
+    // encapsulate formatter routines
+
+    pub fn block_index_and_offset(&self, index: usize) -> (usize, usize) {
+        block_index_and_offset(index)
+    }
+
+
+    // encapsulate routines for both formatter and buffer
+
+    pub fn calc_vis_line_offset(&self, line_index : usize, 
+                                       line_block_index : usize, 
+                                       char_index : usize) -> usize {
+
+        let temp_line = self.buffer.get_line(line_index);
+        
+        let (vis_line_offset, _) = self.formatter.index_to_v2d(
+            RopeGraphemes::new(&temp_line.slice(
+                (line_block_index * LINE_BLOCK_LENGTH)
+                    ..min(
+                        temp_line.len_chars(),
+                        (line_block_index + 1) * LINE_BLOCK_LENGTH,
+                    ),
+            )),
+            self.view_pos.0 - char_index,
+        );
+        vis_line_offset 
+    }
+
+    pub fn index_to_horizontal_v2d(&self, char_idx: usize) -> usize {
+        self.formatter.index_to_horizontal_v2d(&self.buffer, char_idx)
+    }
+
+    // TODO: what's the deal with the _?
+    // TODO: stopped here
+    pub fn vis_iter<'a>(&'a self, line_block_index: usize, line : &'a RopeSlice) -> 
+    LineFormatterVisIter<'a, RopeGraphemes<'a>> {
+
+        let line_len = line.len_chars();
+
+        self.formatter.iter(RopeGraphemes::new(
+                &line.slice((line_block_index * LINE_BLOCK_LENGTH)..line_len),
+        ))
+    }
+
+    pub fn line_beyond_block_length(&self, line_g_index : usize) -> bool {
+        line_g_index >= LINE_BLOCK_LENGTH
+    }
+
+    // since formatter is private
+    pub fn set_wrap_width_to_view_dim(&mut self) {
+        self.formatter.set_wrap_width(self.view_dim.1)
+    }
+    
+
 }

@@ -1,4 +1,3 @@
-use std::cmp::min;
 use std::thread::sleep;
 use std::time;
 
@@ -8,11 +7,12 @@ use termion::input::TermRead;
 
 use editor::Editor;
 use string_utils::{line_ending_to_str, rope_slice_is_line_ending, LineEnding};
-use utils::{digit_count, RopeGraphemes};
-use term_ui::formatter::block_index_and_offset;
-use term_ui::formatter::LINE_BLOCK_LENGTH;
 
-pub mod formatter;
+use utils::digit_count;
+// use term_ui::formatter::block_index_and_offset;
+// use term_ui::formatter::LINE_BLOCK_LENGTH;
+
+// pub mod formatter;
 
 #[allow(dead_code)] // don't care about unused colors
 mod screen;
@@ -66,10 +66,7 @@ macro_rules! ui_loop {
                 $term_ui.width = w as usize;
                 $term_ui.height = h as usize;
                 $term_ui.screen.resize(w as usize, h as usize);
-                $term_ui
-                    .editor
-                    .formatter
-                    .set_wrap_width($term_ui.editor.view_dim.1);
+                $term_ui.editor.set_wrap_width_to_view_dim();
                 should_redraw = true;
             }
 
@@ -132,7 +129,7 @@ impl TermUI {
         self.width = w as usize;
         self.height = h as usize;
         self.editor.update_dim(self.height - 1, self.width);
-        self.editor.formatter.set_wrap_width(self.editor.view_dim.1);
+        self.editor.set_wrap_width_to_view_dim();
         self.screen.resize(w as usize, h as usize);
 
         // Start the UI
@@ -325,8 +322,8 @@ impl TermUI {
         // Percentage position in document
         // TODO: use view instead of cursor for calculation if there is more
         // than one cursor.
-        let percentage: usize = if editor.buffer.char_count() > 0 {
-            (((editor.cursors[0].range.0 as f32) / (editor.buffer.char_count() as f32)) * 100.0)
+        let percentage: usize = if editor.char_count() > 0 {
+            (((editor.cursors[0].range.0 as f32) / (editor.char_count() as f32)) * 100.0)
                 as usize
         } else {
             100
@@ -359,30 +356,25 @@ impl TermUI {
         self.draw_editor_text(editor, (c1.0 + 1, c1.1), c2);
     }
 
+    // TODO: move use of formatter to editor
     fn draw_editor_text(
         &self,
         editor: &Editor,
-        c1: (usize, usize),
+        c1: (usize, usize),     // TODO: what are these exactly one corner?
         c2: (usize, usize),
     ) {
         // Calculate all the starting info
         let gutter_width = editor.editor_dim.1 - editor.view_dim.1;
-        let (line_index, col_i) = editor.buffer.index_to_line_col(editor.view_pos.0);
-        let (mut line_block_index, _) = block_index_and_offset(col_i);
-        let mut char_index = editor
-            .buffer
-            .line_col_to_index((line_index, line_block_index * LINE_BLOCK_LENGTH));
-        let temp_line = editor.buffer.get_line(line_index);
-        let (vis_line_offset, _) = editor.formatter.index_to_v2d(
-            RopeGraphemes::new(&temp_line.slice(
-                (line_block_index * LINE_BLOCK_LENGTH)
-                    ..min(
-                        temp_line.len_chars(),
-                        (line_block_index + 1) * LINE_BLOCK_LENGTH,
-                    ),
-            )),
-            editor.view_pos.0 - char_index,
-        );
+
+        let (line_index, col_i) = editor.index_to_line_col(editor.view_pos.0);
+        
+        let (mut line_block_index, _) = editor.block_index_and_offset(col_i);
+        
+        let mut char_index = editor.line_col_to_index(line_index, line_block_index);
+                
+        let vis_line_offset = editor.calc_vis_line_offset(line_index, 
+                                                          line_block_index, 
+                                                          char_index);
 
         let mut screen_line = c1.0 as isize - vis_line_offset as isize;
         let screen_col = c1.1 as isize + gutter_width as isize;
@@ -396,7 +388,7 @@ impl TermUI {
         }
 
         let mut line_num = line_index + 1;
-        for line in editor.buffer.line_iter_at_index(line_index) {
+        for line in editor.line_iter_at_index(line_index) {
             // Print line number
             if line_block_index == 0 {
                 let lnx = c1.1 + (gutter_width - 1 - digit_count(line_num as u32, 10) as usize);
@@ -416,11 +408,15 @@ impl TermUI {
             let mut line_g_index: usize = 0;
             let mut last_pos_y = 0;
             let mut lines_traversed: usize = 0;
-            let line_len = line.len_chars();
-            let mut g_iter = editor.formatter.iter(RopeGraphemes::new(
-                &line.slice((line_block_index * LINE_BLOCK_LENGTH)..line_len),
-            ));
 
+            // TODO: remove me 
+            // let line_len = line.len_chars();
+            // let mut g_iter = editor.formatter.iter(RopeGraphemes::new(
+            //     &line.slice((line_block_index * editor.formatter.LINE_BLOCK_LENGTH)..line_len),
+            // ));
+            // let mut debug : () = line;
+            
+            let mut g_iter = editor.vis_iter(line_block_index, &line);
             loop {
                 if let Some((g, (pos_y, pos_x), width)) = g_iter.next() {
                     if last_pos_y != pos_y {
@@ -504,13 +500,18 @@ impl TermUI {
                     break;
                 }
 
-                if line_g_index >= LINE_BLOCK_LENGTH {
+                if editor.line_beyond_block_length(line_g_index) {
                     line_block_index += 1;
                     line_g_index = 0;
-                    let line_len = line.len_chars();
-                    g_iter = editor.formatter.iter(RopeGraphemes::new(
-                        &line.slice((line_block_index * LINE_BLOCK_LENGTH)..line_len),
-                    ));
+                    
+                    // TODO: Remove me 
+                    // let line_len = line.len_chars();
+                    // g_iter = editor.formatter.iter(RopeGraphemes::new(
+                    //     &line.slice((line_block_index * editor.formatter.LINE_BLOCK_LENGTH)..line_len),
+                    // ));
+                    
+                    // get a new iterator
+                    g_iter = editor.vis_iter(line_block_index, &line);
                     lines_traversed += 1;
                 }
             }
@@ -535,8 +536,7 @@ impl TermUI {
         if at_cursor {
             // Calculate the cell coordinates at which to draw the cursor
             let pos_x = editor
-                .formatter
-                .index_to_horizontal_v2d(&self.editor.buffer, self.editor.buffer.char_count());
+                .index_to_horizontal_v2d(editor.char_count());
             let px = pos_x as isize + screen_col - editor.view_pos.1 as isize;
             let py = screen_line - 1;
 
