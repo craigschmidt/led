@@ -9,10 +9,6 @@ use editor::Editor;
 use string_utils::{line_ending_to_str, rope_slice_is_line_ending, LineEnding};
 
 use utils::digit_count;
-// use term_ui::formatter::block_index_and_offset;
-// use term_ui::formatter::LINE_BLOCK_LENGTH;
-
-// pub mod formatter;
 
 #[allow(dead_code)] // don't care about unused colors
 mod screen;
@@ -356,7 +352,6 @@ impl TermUI {
         self.draw_editor_text(editor, (c1.0 + 1, c1.1), c2);
     }
 
-    // TODO: move use of formatter to editor
     fn draw_editor_text(
         &self,
         editor: &Editor,
