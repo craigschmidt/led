@@ -187,8 +187,10 @@ impl TermUI {
                         self.editor.cursor_right(1);
                     }
 
+                    // use the desired line ending in 
+                    // place of the literal \n
                     Key::Char('\n') => {
-                        let nl = line_ending_to_str(self.editor.line_ending_type);
+                        let nl = line_ending_to_str(self.editor.get_line_ending_type());
                         self.editor.insert_text_at_cursor(nl);
                     }
 
@@ -310,8 +312,8 @@ impl TermUI {
         }
 
         // Filename and dirty marker
-        let filename = editor.file_path.display();
-        let dirty_char = if editor.dirty { "*" } else { "" };
+        let filename = editor.get_file_path().display();
+        let dirty_char = if editor.get_dirty() { "*" } else { "" };
         let name = format!("{}{}", filename, dirty_char);
         self.screen.draw(c1.1 + 1, c1.0, &name[..], style);
 
@@ -329,7 +331,7 @@ impl TermUI {
             .draw(c2.1 - pstring.len().min(c2.1), c1.0, &pstring[..], style);
 
         // Text encoding info and tab style
-        let nl = match editor.line_ending_type {
+        let nl = match editor.get_line_ending_type() {
             LineEnding::None => "None",
             LineEnding::CRLF => "CRLF",
             LineEnding::LF => "LF",
@@ -340,10 +342,14 @@ impl TermUI {
             LineEnding::LS => "LS",
             LineEnding::PS => "PS",
         };
-        let soft_tabs_str = if editor.soft_tabs { "spaces" } else { "tabs" };
+        let soft_tabs_str = if editor.get_soft_tabs()
+            { "spaces" } 
+        else 
+            { "tabs" };
+
         let info_line = format!(
             "UTF8:{}  {}:{}",
-            nl, soft_tabs_str, editor.soft_tab_width as usize
+            nl, soft_tabs_str, editor.get_soft_tab_width() as usize
         );
         self.screen
             .draw(c2.1 - 30.min(c2.1), c1.0, &info_line[..], style);
@@ -359,9 +365,9 @@ impl TermUI {
         c2: (usize, usize),
     ) {
         // Calculate all the starting info
-        let gutter_width = editor.editor_dim.1 - editor.view_dim.1;
+        let gutter_width = editor.get_gutter_width();
 
-        let (line_index, col_i) = editor.index_to_line_col(editor.view_pos.0);
+        let (line_index, col_i) = editor.index_to_line_col();
         
         let (mut line_block_index, _) = editor.block_index_and_offset(col_i);
         
@@ -421,7 +427,7 @@ impl TermUI {
                         last_pos_y = pos_y;
                     }
                     // Calculate the cell coordinates at which to draw the grapheme
-                    let px = pos_x as isize + screen_col - editor.view_pos.1 as isize;
+                    let px = pos_x as isize + screen_col - editor.get_vis_horizontal_offset() as isize;
                     let py = lines_traversed as isize + screen_line;
 
                     // If we're off the bottom, we're done
@@ -532,7 +538,7 @@ impl TermUI {
             // Calculate the cell coordinates at which to draw the cursor
             let pos_x = editor
                 .index_to_horizontal_v2d(editor.char_count());
-            let px = pos_x as isize + screen_col - editor.view_pos.1 as isize;
+            let px = pos_x as isize + screen_col - editor.get_vis_horizontal_offset() as isize;
             let py = screen_line - 1;
 
             if (px >= c1.1 as isize)

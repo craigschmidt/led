@@ -20,20 +20,23 @@ mod formatter;
 pub struct Editor {
     buffer: Buffer,
     formatter: LineFormatter,
-    pub file_path: PathBuf,
-    pub line_ending_type: LineEnding,
-    pub soft_tabs: bool,
-    pub soft_tab_width: u8,
-    pub dirty: bool,
+    file_path: PathBuf,
+    line_ending_type: LineEnding,
+    soft_tabs: bool,
+    soft_tab_width: u8,
+    dirty: bool,
 
     // The dimensions of the total editor in screen space, including the
     // header, gutter, etc.
-    pub editor_dim: (usize, usize),
+    editor_dim: (usize, usize),   // height, width
 
     // The dimensions and position of just the text view portion of the editor
-    pub view_dim: (usize, usize), // (height, width)
-    pub view_pos: (usize, usize), // (char index, visual horizontal offset)
+    view_dim: (usize, usize), // (height, width)
 
+    // TODO: understand these
+    view_pos: (usize, usize), // (char index, visual horizontal offset)
+
+    // TODO: make private
     // The editing cursor position
     pub cursors: CursorSet,
 }
@@ -710,8 +713,8 @@ impl Editor {
     ///
     /// If the index is off the end of the text, returns the line and column
     /// number of the last valid text position.
-    pub fn index_to_line_col(&self, pos: usize) -> (usize, usize) {
-        self.buffer.index_to_line_col(pos)
+    pub fn index_to_line_col(&self) -> (usize, usize) {
+        self.buffer.index_to_line_col(self.view_pos.0)
     }
 
     pub fn char_count(&self) -> usize {
@@ -774,6 +777,40 @@ impl Editor {
     pub fn set_wrap_width_to_view_dim(&mut self) {
         self.formatter.set_wrap_width(self.view_dim.1)
     }
-    
+
+    // getters 
+    pub fn get_file_path(&self) -> &PathBuf {
+        &self.file_path
+    }
+
+    pub fn get_soft_tabs(&self) -> bool { 
+        self.soft_tabs
+    }
+
+    pub fn get_soft_tab_width(&self) -> u8 {
+        self.soft_tab_width
+    }
+
+    pub fn get_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    // LineEnding is copy
+    pub fn get_line_ending_type(&self) -> LineEnding {
+        self.line_ending_type
+    }
+
+
+    // the left gutter is the difference in space between the editor and view width
+    pub fn get_gutter_width(&self) -> usize { 
+        self.editor_dim.1 - self.view_dim.1
+    }
+
+    // TODO: remove me at some point, or break off from view_pos.0
+    // is just always 0
+    pub fn get_vis_horizontal_offset(&self) -> usize {
+        self.view_pos.1
+    }
+
 
 }
