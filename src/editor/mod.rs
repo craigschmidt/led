@@ -24,21 +24,22 @@ pub struct Editor {
     line_ending_type: LineEnding,
     soft_tabs: bool,
     soft_tab_width: u8,
-    dirty: bool,
+    dirty: bool,   // does it need saving?
 
     // The dimensions of the total editor in screen space, including the
     // header, gutter, etc.
     editor_dim: (usize, usize),   // height, width
 
     // The dimensions and position of just the text view portion of the editor
+    // which changes as the number of digits in the line numbering grows
     view_dim: (usize, usize), // (height, width)
 
-    // TODO: understand these
+    // TODO: understand these, 
+    // is the the first character to display in the view?
     view_pos: (usize, usize), // (char index, visual horizontal offset)
 
-    // TODO: make private
-    // The editing cursor position
-    pub cursors: CursorSet,
+    // The editing cursor positions
+    cursors: CursorSet,
 }
 
 impl Editor {
@@ -259,40 +260,27 @@ impl Editor {
     /// actually changed anything.
     pub fn update_dim(&mut self, h: usize, w: usize) -> bool {
         let line_count_digits = digit_count(self.buffer.line_count() as u32, 10) as usize;
+        // only need to update if editor_dim changed
         if self.editor_dim.0 != h || self.editor_dim.1 != w {
             self.editor_dim = (h, w);
 
             // Minus 1 vertically for the header, minus one more than the digits in
             // the line count for the gutter.
+            // TODO: generalize this
             self.view_dim = (
                 self.editor_dim.0 - 1,
                 self.editor_dim.1 - line_count_digits - 1,
             );
             return true;
         } else if self.view_dim.1 != (self.editor_dim.1 - line_count_digits - 1) {
+            // or if the line count changes this needs to be updated
+            debug!("update_dim:{},{}", self.buffer.line_count(), line_count_digits);
             self.view_dim.1 = self.editor_dim.1 - line_count_digits - 1;
             return true;
         } else {
             return false;
         }
     }
-
-
-    // // note: this ties the buffer, the formatter and a cursor together
-    // // takes c.range.0 as the cursor start
-    // pub fn calc_vis_start(& self, cursor_start : usize) -> usize {
-    //     // TODO: lets move this to editor
-    //     self.formatter.index_to_horizontal_v2d(&self.buffer, cursor_start)
-    // }
-
-    // // c.vis_start = self.formatter.index_to_horizontal_v2d(&self.buffer, c.range.0)
-
-    // // note: this ties the buffer, the formatter and a cursor together
-    // pub fn update_vis_start(&mut self, c: &mut Cursor) {
-    //     // TODO: lets move this to editor
-    //     let vis_start = self.calc_vis_start(c.range.0);
-    //     c.vis_start = vis_start;
-    // }
 
     pub fn undo(&mut self) {
         // TODO: handle multiple cursors properly
@@ -711,9 +699,8 @@ impl Editor {
     /// Converts a char index into a line number and char-column
     /// number.
     ///
-    /// If the index is off the end of the text, returns the line and column
-    /// number of the last valid text position.
-    pub fn index_to_line_col(&self) -> (usize, usize) {
+    /// get the line and column of the current view_pos.0
+    pub fn index_to_line_col_view_pos_row(&self) -> (usize, usize) {
         self.buffer.index_to_line_col(self.view_pos.0)
     }
 
@@ -724,13 +711,6 @@ impl Editor {
     pub fn line_iter_at_index<'a>(&'a self, line_idx: usize) -> iter::Lines<'a> {
         self.buffer.line_iter_at_index(line_idx)
     }
-
-    // encapsulate formatter routines
-
-    pub fn block_index_and_offset(&self, index: usize) -> (usize, usize) {
-        block_index_and_offset(index)
-    }
-
 
     // encapsulate routines for both formatter and buffer
 
@@ -800,7 +780,6 @@ impl Editor {
         self.line_ending_type
     }
 
-
     // the left gutter is the difference in space between the editor and view width
     pub fn get_gutter_width(&self) -> usize { 
         self.editor_dim.1 - self.view_dim.1
@@ -813,4 +792,40 @@ impl Editor {
     }
 
 
+    // Check if the character is within a cursor
+    pub fn at_cursor(&self, char_index : usize) -> bool {
+        for c in self.cursors.iter() {
+            if char_index >= c.range.0 && char_index <= c.range.1 {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Percentage position in document
+    // TODO: use view instead of cursor for calculation if there is more
+    // than one cursor.
+    pub fn percentage_in_document(&self) -> usize {
+
+        // if document is empty, then show 100
+        if self.char_count() == 0 {
+            return 100
+        } 
+        (((self.cursors[0].range.0 as f32) / (self.char_count() as f32)) * 100.0) as usize
+    }
+
+    #[allow(dead_code)] // for later
+    pub fn line_counts(&self) -> usize { 
+        self.buffer.line_count()
+    }
+
+
+    // just a plain function
+    pub fn block_index_and_offset(index: usize) -> (usize, usize) {
+        block_index_and_offset(index)
+    }
+
+
 }
+
+// 

@@ -15,11 +15,16 @@ extern crate termion;
 extern crate unicode_segmentation;
 // Determine displayed width of `char` and `str` types according to Unicode Standard Annex #11 rules. 
 extern crate unicode_width;
+// logging code 
+extern crate flexi_logger;
+#[macro_use]
+extern crate log;
 
 use docopt::Docopt;
 use editor::Editor;
 use std::path::Path;
 use term_ui::TermUI;
+use flexi_logger::Logger;  // opt_format
 
 mod editor;
 mod string_utils;
@@ -52,6 +57,14 @@ fn main() {
     let args: Args = Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
+
+    // start logging:  one of error, warn, info, debug, trace
+    Logger::with_env_or_str("debug")
+            .log_to_file()
+            .directory("log_files")
+            // .format(opt_format)  try default now
+            .start()
+            .unwrap_or_else(|e| panic!("Logger initialization failed with {}", e));
 
     // Load file, if specified
     // TODO: stopped here ....

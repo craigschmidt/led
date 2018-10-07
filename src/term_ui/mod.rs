@@ -57,6 +57,8 @@ macro_rules! ui_loop {
 
             // Check for screen resize
             let (w, h) = termion::terminal_size().unwrap();
+            // TODO: is the -1 for the header row????
+            // why check this, why not $term_ui.width == w etc.????
             let needs_update = $term_ui.editor.update_dim(h as usize - 1, w as usize);
             if needs_update {
                 $term_ui.width = w as usize;
@@ -121,9 +123,11 @@ impl TermUI {
         self.screen.hide_cursor();
 
         // Set terminal size info
+        // TODO: update size if it changes
         let (w, h) = termion::terminal_size().unwrap();
         self.width = w as usize;
         self.height = h as usize;
+        // TODO: room for title bar????
         self.editor.update_dim(self.height - 1, self.width);
         self.editor.set_wrap_width_to_view_dim();
         self.screen.resize(w as usize, h as usize);
@@ -301,7 +305,7 @@ impl TermUI {
     fn draw_editor(
         &self,
         editor: &Editor,
-        c1: (usize, usize),
+        c1: (usize, usize),  // corner ???
         c2: (usize, usize),
     ) {
         let style = Style(Color::Black, Color::Cyan);
@@ -318,15 +322,7 @@ impl TermUI {
         self.screen.draw(c1.1 + 1, c1.0, &name[..], style);
 
         // Percentage position in document
-        // TODO: use view instead of cursor for calculation if there is more
-        // than one cursor.
-        let percentage: usize = if editor.char_count() > 0 {
-            (((editor.cursors[0].range.0 as f32) / (editor.char_count() as f32)) * 100.0)
-                as usize
-        } else {
-            100
-        };
-        let pstring = format!("{}%", percentage);
+        let pstring = format!("{}%", editor.percentage_in_document());
         self.screen
             .draw(c2.1 - pstring.len().min(c2.1), c1.0, &pstring[..], style);
 
@@ -361,37 +357,67 @@ impl TermUI {
     fn draw_editor_text(
         &self,
         editor: &Editor,
-        c1: (usize, usize),     // TODO: what are these exactly one corner?
-        c2: (usize, usize),
+        c1: (usize, usize),  // upper left corner (1, 0)     (row,col)
+        c2: (usize, usize),  // bottom right corner (64, 91) (row,col)
     ) {
         // Calculate all the starting info
-        let gutter_width = editor.get_gutter_width();
+        let gutter_width = editor.get_gutter_width();  
+        debug!("gutter_width:{}", gutter_width);  // i.e. 3
 
-        let (line_index, col_i) = editor.index_to_line_col();
+        // get the line and column of the current editor.view_pos.0
+        let (line_index, col_i) = editor.index_to_line_col_view_pos_row();  
+        debug!("line_index:{}, col_i:{}", line_index, col_i);  // 0, 0
         
-        let (mut line_block_index, _) = editor.block_index_and_offset(col_i);
+        // plain function, not method
+        let (mut line_block_index, _huh) = Editor::block_index_and_offset(col_i);
+        debug!("line_block_index:{}, _huh:{}", line_block_index, _huh); // 0, 0
         
         let mut char_index = editor.line_col_to_index(line_index, line_block_index);
+        debug!("char_index:{}", char_index);  // 0 
                 
         let vis_line_offset = editor.calc_vis_line_offset(line_index, 
                                                           line_block_index, 
                                                           char_index);
 
+        debug!("vis_line_offset:{}", vis_line_offset);  // 0 
+
         let mut screen_line = c1.0 as isize - vis_line_offset as isize;
+        debug!("screen_line:{}", screen_line);  // 1
+
+        // column to start drawing screen of text 
+        // skip gutter and and the col of c1.1
         let screen_col = c1.1 as isize + gutter_width as isize;
+        debug!("screen_col:{}", screen_col); // 3  so the starting column of 
 
         // Fill in the gutter with the appropriate background
+        // since we might not have a line number for all locations 
+        // due to wrapping
         for y in c1.0..(c2.0 + 1) {
             for x in c1.1..(c1.1 + gutter_width - 1) {
-                self.screen
-                    .draw(x, y, " ", Style(Color::White, Color::Blue));
+                self.screen.draw(x, y, " ", Style(Color::White, Color::Blue));
             }
         }
 
+        // the 1 based line number in the file, to print in gutter
         let mut line_num = line_index + 1;
+
+        // line is ropey::RopeSlice
+        // there is a weird bug where this has an extra blank line
+        // fix the source but for now just skip it
+        // note: this bug has been fixed
+        // let mut k = 0;
+        // this is a hack to fix problem with ropey 0.9.1 where it ignores 
+        // the last /n in a file
+
         for line in editor.line_iter_at_index(line_index) {
             // Print line number
+
             if line_block_index == 0 {
+
+                // let dc = digit_count(line_num as u32, 10);
+                debug!("{:?},{},{}", line, line.len_bytes(), line.len_chars());
+                // gutter width is supposed to have one extra space at end, 
+                // so gutter_width -1 gives max width of digit_count
                 let lnx = c1.1 + (gutter_width - 1 - digit_count(line_num as u32, 10) as usize);
                 let lny = screen_line as usize;
                 if lny >= c1.0 && lny <= c2.0 {
@@ -407,19 +433,32 @@ impl TermUI {
             // Loop through the graphemes of the line and print them to
             // the screen.
             let mut line_g_index: usize = 0;
+            // reset these for the line
             let mut last_pos_y = 0;
-            let mut lines_traversed: usize = 0;
 
-            // TODO: remove me 
-            // let line_len = line.len_chars();
-            // let mut g_iter = editor.formatter.iter(RopeGraphemes::new(
-            //     &line.slice((line_block_index * editor.formatter.LINE_BLOCK_LENGTH)..line_len),
-            // ));
-            // let mut debug : () = line;
+            // with wrapped lines, this shows how many lines of screen the current line is using
+            let mut lines_traversed: usize = 0;
             
             let mut g_iter = editor.vis_iter(line_block_index, &line);
             loop {
+                // pos_y is the 0 based row of just the wrapped line by itself
+                // pos_x is the 0 based column of just the wrapped line by itself
+                // so if a line takes 3 rows to display, pos_y is 0,1,or 2
                 if let Some((g, (pos_y, pos_x), width)) = g_iter.next() {
+                  
+                    let mut g_to_print = g.to_string();
+                    // escape tabs and \n
+                    // also track if last grapheme of last line is a line ending
+                    if rope_slice_is_line_ending(&g) {
+                        g_to_print = "LF".to_string();
+                    }
+                    if g_to_print == "\t".to_string() {
+                        g_to_print = "TAB".to_string();
+                    }
+                    debug!("start: {}, pos_y:{}, pos_x:{}, width:{}, line_g_index:{}, last_pos_y:{}, lines_traversed:{}, line_block_index:{}", 
+                    g_to_print, pos_y, pos_x, width, line_g_index, last_pos_y, lines_traversed, line_block_index);
+
+                    // this is true when have a wrapped line
                     if last_pos_y != pos_y {
                         if last_pos_y < pos_y {
                             lines_traversed += pos_y - last_pos_y;
@@ -438,14 +477,10 @@ impl TermUI {
                     // Draw the grapheme to the screen if it's in bounds
                     if (px >= c1.1 as isize) && (py >= c1.0 as isize) && (px <= c2.1 as isize) {
                         // Check if the character is within a cursor
-                        let mut at_cursor = false;
-                        for c in editor.cursors.iter() {
-                            if char_index >= c.range.0 && char_index <= c.range.1 {
-                                at_cursor = true;
-                            }
-                        }
+                        let at_cursor = editor.at_cursor(char_index);
 
                         // Actually print the character
+                        // if off the end of the line, and a cursor
                         if rope_slice_is_line_ending(&g) {
                             if at_cursor {
                                 self.screen.draw(
@@ -456,6 +491,7 @@ impl TermUI {
                                 );
                             }
                         } else if g == "\t" {
+                            // print the right number of spaces for a tab
                             for i in 0..width {
                                 let tpx = px as usize + i;
                                 if tpx <= c2.1 {
@@ -467,7 +503,7 @@ impl TermUI {
                                     );
                                 }
                             }
-
+                            // and maybe print a cursor
                             if at_cursor {
                                 self.screen.draw(
                                     px as usize,
@@ -477,6 +513,8 @@ impl TermUI {
                                 );
                             }
                         } else {
+                            // just print a regular character
+                            // either with as a cursor or not
                             if at_cursor {
                                 self.screen.draw_rope_slice(
                                     px as usize,
@@ -501,16 +539,11 @@ impl TermUI {
                     break;
                 }
 
+                // force a new line if this one is too long
                 if editor.line_beyond_block_length(line_g_index) {
                     line_block_index += 1;
                     line_g_index = 0;
-                    
-                    // TODO: Remove me 
-                    // let line_len = line.len_chars();
-                    // g_iter = editor.formatter.iter(RopeGraphemes::new(
-                    //     &line.slice((line_block_index * editor.formatter.LINE_BLOCK_LENGTH)..line_len),
-                    // ));
-                    
+                                        
                     // get a new iterator
                     g_iter = editor.vis_iter(line_block_index, &line);
                     lines_traversed += 1;
@@ -527,32 +560,41 @@ impl TermUI {
         // at the end if needed.
 
         // Check if the character is within a cursor
-        let mut at_cursor = false;
-        for c in editor.cursors.iter() {
-            if char_index >= c.range.0 && char_index <= c.range.1 {
-                at_cursor = true;
-            }
-        }
+        let at_cursor = editor.at_cursor(char_index);
+
+        debug!("after at_cursor, {}", at_cursor);
 
         if at_cursor {
             // Calculate the cell coordinates at which to draw the cursor
             let pos_x = editor
                 .index_to_horizontal_v2d(editor.char_count());
+            debug!("pos_x:{}", pos_x);
             let px = pos_x as isize + screen_col - editor.get_vis_horizontal_offset() as isize;
+            debug!("px:{}",px);
+            // TODO: this causes a bug when -1, should be -2
+            // but then typing a CR doesn't advance to next line
+            // how can it alter the state?
+            // back up to the previous value of screen_line
+            // note: bug doesn't happen when the screen is full of text!
             let py = screen_line - 1;
 
-            if (px >= c1.1 as isize)
-                && (py >= c1.0 as isize)
-                && (px <= c2.1 as isize)
-                && (py <= c2.0 as isize)
+            // if last_line_ends_in_line_ending {
+            //                 screen_line
+            //             } else { 
+            //                 screen_line - 1
+            //             };
+            // debug!("py:{}, {}", py, last_line_ends_in_line_ending);
+
+            if (px >= c1.1 as isize) && (py >= c1.0 as isize) && (px <= c2.1 as isize) && (py <= c2.0 as isize)
             {
                 self.screen.draw(
                     px as usize,
                     py as usize,
                     " ",
-                    Style(Color::Black, Color::White),
+                    Style(Color::Black, Color::Red),
                 );
             }
         }
     }
+
 }

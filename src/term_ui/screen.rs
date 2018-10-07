@@ -16,10 +16,12 @@ use unicode_width::UnicodeWidthStr;
 use utils::{grapheme_width, RopeGraphemes};
 
 pub(crate) struct Screen {
+    // TODO: convert this for the mouse version
     out: RefCell<AlternateScreen<RawTerminal<BufWriter<io::Stdout>>>>,
+    // what is the purpose of this? 
     buf: RefCell<Vec<Option<(Style, SmallString)>>>,
-    w: usize,
-    h: usize,
+    w: usize,   // width of screen
+    h: usize,   // height of screen
 }
 
 impl Screen {
@@ -73,6 +75,7 @@ impl Screen {
         // Write everything to the tmp_string first.
         for y in 0..self.h {
             let mut x = 0;
+            // Goto coordinates are 1 based so + 1
             write!(out, "{}", termion::cursor::Goto(1, y as u16 + 1)).unwrap();
             while x < self.w {
                 if let Some((style, ref text)) = buf[y * self.w + x] {
@@ -92,17 +95,21 @@ impl Screen {
         out.flush().unwrap();
     }
 
+    // draw a string slice, like the numbers in the gutter, or the header
     pub(crate) fn draw(&self, x: usize, y: usize, text: &str, style: Style) {
         if y < self.h {
             let mut buf = self.buf.borrow_mut();
             let mut x = x;
             for g in UnicodeSegmentation::graphemes(text, true) {
                 let width = UnicodeWidthStr::width(g);
+                // skip zero width characters
                 if width > 0 {
                     if x < self.w {
                         buf[y * self.w + x] = Some((style, g.into()));
                     }
                     x += 1;
+                    // skip the double wide characters that would be covered up, 
+                    // putting None into the buffer
                     for _ in 0..(width - 1) {
                         if x < self.w {
                             buf[y * self.w + x] = None;
@@ -114,17 +121,21 @@ impl Screen {
         }
     }
 
+    // draw the main body text from a rope slice
     pub(crate) fn draw_rope_slice(&self, x: usize, y: usize, text: &RopeSlice, style: Style) {
         if y < self.h {
             let mut buf = self.buf.borrow_mut();
             let mut x = x;
             for g in RopeGraphemes::new(&text) {
                 let width = grapheme_width(&g);
+                // skip zero width characters
                 if width > 0 {
                     if x < self.w {
                         buf[y * self.w + x] = Some((style, SmallString::from_rope_slice(&g)));
                     }
                     x += 1;
+                    // skip the double wide characters that would be covered up, 
+                    // putting None into the buffer
                     for _ in 0..(width - 1) {
                         if x < self.w {
                             buf[y * self.w + x] = None;
