@@ -45,7 +45,7 @@ impl LineFormatter {
     pub fn new(tab_width: u8) -> LineFormatter {
         LineFormatter {
             tab_width: tab_width,
-            wrap_type: WrapType::WordWrap(40),  // a default, really set by set_wrap_width
+            wrap_type: WrapType::WordWrap(80),  // a default, really set by set_wrap_width
             maintain_indent: true,
             wrap_additional_indent: 0,
         }
@@ -514,9 +514,10 @@ fn grapheme_vis_width_at_vis_pos(g: RopeSlice, pos: usize, tab_width: usize) -> 
 mod tests {
     // #![allow(unused_imports)]
     use super::*;
-    use buffer::Buffer;
-    use formatter::RoundingBehavior::{Ceiling, Floor, Round};
-    use formatter::{LineFormatter, LINE_BLOCK_LENGTH};
+    use editor::buffer::Buffer;
+    // TODO: test Ceiling, Round
+    use self::RoundingBehavior::{Floor};
+    use self::LineFormatter;
     use ropey::Rope;
     use utils::RopeGraphemes;
 
