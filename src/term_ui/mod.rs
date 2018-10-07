@@ -418,7 +418,7 @@ impl TermUI {
                 debug!("{:?},{},{}", line, line.len_bytes(), line.len_chars());
                 // gutter width is supposed to have one extra space at end, 
                 // so gutter_width -1 gives max width of digit_count
-                let lnx = c1.1 + (gutter_width - 1 - digit_count(line_num as u32, 10) as usize);
+                let lnx = c1.1 + (gutter_width - 1 - digit_count(line_num));
                 let lny = screen_line as usize;
                 if lny >= c1.0 && lny <= c2.0 {
                     self.screen.draw(

@@ -1,11 +1,15 @@
+// TODO: compare these to the ones in the ropey examples
+
 use ropey::{iter::Chunks, str_utils::byte_to_char_idx, RopeSlice};
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 use unicode_width::UnicodeWidthStr;
 
-pub fn digit_count(mut n: u32, b: u32) -> u32 {
+// hard code for base 10 digits,
+// because I don't think we'll have any other kind
+pub fn digit_count(mut n: usize) -> usize {
     let mut d = 0;
     loop {
-        n /= b;
+        n /= 10;
         d += 1;
         if n == 0 {
             return d;
@@ -196,19 +200,19 @@ mod tests {
 
     #[test]
     fn digit_count_base_10() {
-        assert_eq!(digit_count(0, 10), 1);
-        assert_eq!(digit_count(9, 10), 1);
-        assert_eq!(digit_count(10, 10), 2);
-        assert_eq!(digit_count(99, 10), 2);
-        assert_eq!(digit_count(100, 10), 3);
-        assert_eq!(digit_count(999, 10), 3);
-        assert_eq!(digit_count(1000, 10), 4);
-        assert_eq!(digit_count(9999, 10), 4);
-        assert_eq!(digit_count(10000, 10), 5);
-        assert_eq!(digit_count(99999, 10), 5);
-        assert_eq!(digit_count(100000, 10), 6);
-        assert_eq!(digit_count(999999, 10), 6);
-        assert_eq!(digit_count(1000000, 10), 7);
-        assert_eq!(digit_count(9999999, 10), 7);
+        assert_eq!(digit_count(0), 1);
+        assert_eq!(digit_count(9), 1);
+        assert_eq!(digit_count(10), 2);
+        assert_eq!(digit_count(99), 2);
+        assert_eq!(digit_count(100), 3);
+        assert_eq!(digit_count(999), 3);
+        assert_eq!(digit_count(1000), 4);
+        assert_eq!(digit_count(9999), 4);
+        assert_eq!(digit_count(10000), 5);
+        assert_eq!(digit_count(99999), 5);
+        assert_eq!(digit_count(100000), 6);
+        assert_eq!(digit_count(999999), 6);
+        assert_eq!(digit_count(1000000), 7);
+        assert_eq!(digit_count(9999999), 7);
     }
 }

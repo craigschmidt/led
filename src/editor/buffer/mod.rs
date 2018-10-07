@@ -2,7 +2,7 @@
 
 use std::fs::File;
 use std::io;
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 
 use self::undo_stack::Operation::*;
@@ -42,8 +42,12 @@ impl Buffer {
     }
 
     pub fn new_from_file(path: &Path) -> io::Result<Buffer> {
+
+        let f = BufReader::new(File::open(path)?);
+
         let buf = Buffer {
-            text: Rope::from_reader(BufReader::new(try!(File::open(path))))?,
+
+            text: Rope::from_reader(f)?,
             file_path: Some(path.to_path_buf()),
             undo_stack: UndoStack::new(),
         };
@@ -52,11 +56,12 @@ impl Buffer {
     }
 
     pub fn save_to_file(&self, path: &Path) -> io::Result<()> {
-        let mut f = BufWriter::new(try!(File::create(path)));
 
-        for c in self.text.chunks() {
-            let _ = f.write(c.as_bytes());
-        }
+        // open file buffer, can fail
+        let f = BufWriter::new(File::create(path)?);
+
+        // Write the file back out to disk, can fail
+        self.text.write_to(f)?;
 
         return Ok(());
     }

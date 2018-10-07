@@ -259,7 +259,7 @@ impl Editor {
     /// Updates the view dimensions, and returns whether that
     /// actually changed anything.
     pub fn update_dim(&mut self, h: usize, w: usize) -> bool {
-        let line_count_digits = digit_count(self.buffer.line_count() as u32, 10) as usize;
+        let line_count_digits = digit_count(self.buffer.line_count());
         // only need to update if editor_dim changed
         if self.editor_dim.0 != h || self.editor_dim.1 != w {
             self.editor_dim = (h, w);

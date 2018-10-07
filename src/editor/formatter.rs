@@ -77,7 +77,7 @@ impl LineFormatter {
     where
         T: Iterator<Item = RopeSlice<'a>>,
     {
-        let mut dim: (usize, usize) = (0, 0);
+        let mut dim: (usize, usize) = (0, 0);   // rows and columns used
 
         for (_, pos, width) in self.iter(g_iter) {
             dim = (max(dim.0, pos.0), max(dim.1, pos.1 + width));
@@ -523,6 +523,8 @@ mod tests {
 
     #[test]
     fn dimensions_1() {
+        // 123456789012345678901234567890
+        // Hello there, stranger!
         let text = Rope::from_str("Hello there, stranger!"); // 22 graphemes long
 
         let mut f = LineFormatter::new(4);
