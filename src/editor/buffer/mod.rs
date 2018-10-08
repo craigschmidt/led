@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io;
 use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
+use std::cmp::{min,max};
 
 use self::undo_stack::Operation::*;
 use self::undo_stack::UndoStack;
@@ -296,21 +297,29 @@ impl Buffer {
     // Position conversions
     // ------------------------------------------------------------------------
 
-    /// Converts a char index into a line number and char-column
-    /// number.
+    /// Converts a char index into a line number and char-column number.
+    /// i.e. char offset from start of line
     ///
     /// If the index is off the end of the text, returns the line and column
     /// number of the last valid text position.
     pub fn index_to_line_col(&self, pos: usize) -> (usize, usize) {
         if pos < self.text.len_chars() {
+            // the line
             let line = self.text.char_to_line(pos);
+            // Returns the char index of the start of the given line.
             let line_pos = self.text.line_to_char(line);
 
-            return (line, pos - line_pos);
+            // so the position on the line is the difference with the start of the line
+            return (line, pos - line_pos);  // line number, char-column number
         } else {
+
+            // off the end, if for example "move to line" is too large
             let line = self.text.len_lines() - 1;
+
+            // Returns the char index of the start of the given line.
             let line_pos = self.text.line_to_char(line);
 
+            // return one-past-the-end for char offset
             return (line, self.text.len_chars() - line_pos);
         }
     }
@@ -323,13 +332,31 @@ impl Buffer {
     /// beyond the end of the buffer, returns the index of the buffer's last
     /// valid position.
     pub fn line_col_to_index(&self, pos: (usize, usize)) -> usize {
+
+        // need to special case this or l_end-1 will underflow
+        if self.text.len_chars() == 0 {
+            return 0
+        }
+
         if pos.0 < self.text.len_lines() {
-            let l_start = self.text.line_to_char(pos.0);
-            let l_end = self.text.line_to_char(pos.0 + 1);
-            return (l_start + pos.1)
-                .min(l_start.max(l_end - 1.min(l_end)))
-                .min(self.text.len_chars());
-        } else {
+            
+            // char_idx for start of line 
+            let l_start = self.text.line_to_char(pos.0);   
+            // char_idx for start of next line
+            let l_end = self.text.line_to_char(pos.0 + 1); 
+            
+            // back up by 1 to get to end of line,
+            // if they are not the same (say at the end of text)
+            let end_of_line = max(l_start,l_end-1);
+
+            // overall character index is index of start of line, plus char-column number
+            let char_idx = l_start + pos.1;
+            
+            // don't go beyond the end of this line 
+            return min(char_idx, end_of_line);
+
+        } else { 
+            // is beyond the last line,, so return one beyond
             return self.text.len_chars();
         }
     }
@@ -1357,46 +1384,126 @@ mod tests {
     #[test]
     fn line_col_to_index_1() {
         let mut buf = Buffer::new();
+        //  index        0           1           2
+        //  index        012 345678 9012345 678 9012 3456789
+        //  line         0   1      2       3   4    5
+        //  col          012 012345 0123456 012 0123 012345
         buf.insert_text("Hi\nthere\npeople\nof\nthe\nworld!", 0);
 
-        let pos = buf.line_col_to_index((2, 3));
+        assert_eq!(buf.line_col_to_index((0,  0)),  0);
+        assert_eq!(buf.line_col_to_index((0,  1)),  1);
+        assert_eq!(buf.line_col_to_index((0,  2)),  2);  // \n
+        assert_eq!(buf.line_col_to_index((0,  3)),  2);  // invalid  col
+        
+        assert_eq!(buf.line_col_to_index((1,  0)),  3);
+        assert_eq!(buf.line_col_to_index((1,  1)),  4);
+        assert_eq!(buf.line_col_to_index((1,  2)),  5); 
+        assert_eq!(buf.line_col_to_index((1,  3)),  6);
+        assert_eq!(buf.line_col_to_index((1,  4)),  7);
+        assert_eq!(buf.line_col_to_index((1,  5)),  8);  // \n
+        assert_eq!(buf.line_col_to_index((1,  6)),  8);  // invalid col
 
-        assert!(pos == 12);
+        assert_eq!(buf.line_col_to_index((2,  0)),  9);  
+        assert_eq!(buf.line_col_to_index((2,  1)),  10);  
+        assert_eq!(buf.line_col_to_index((2,  2)),  11);  
+        assert_eq!(buf.line_col_to_index((2,  3)),  12);  
+        assert_eq!(buf.line_col_to_index((2,  4)),  13);  
+        assert_eq!(buf.line_col_to_index((2,  5)),  14);  
+        assert_eq!(buf.line_col_to_index((2,  6)),  15);  // \n 
+        assert_eq!(buf.line_col_to_index((2,  7)),  15);  // invalid col 
+        assert_eq!(buf.line_col_to_index((2, 10)),  15);  // invalid col
+        
+        assert_eq!(buf.line_col_to_index((3,  0)),  16);  
+        assert_eq!(buf.line_col_to_index((3,  1)),  17);
+        assert_eq!(buf.line_col_to_index((3,  2)),  18);  // \n
+        assert_eq!(buf.line_col_to_index((3,  3)),  18);  // invalid col
+
+        assert_eq!(buf.line_col_to_index((4,  0)),  19);  
+        assert_eq!(buf.line_col_to_index((4,  1)),  20);  
+        assert_eq!(buf.line_col_to_index((4,  2)),  21);  
+        assert_eq!(buf.line_col_to_index((4,  3)),  22);  // \n  
+        assert_eq!(buf.line_col_to_index((4,  4)),  22);  // invalid col
+
+        assert_eq!(buf.line_col_to_index((5,  0)),  23);  // w 
+        assert_eq!(buf.line_col_to_index((5,  1)),  24);  // o
+        assert_eq!(buf.line_col_to_index((5,  2)),  25);  // r
+        assert_eq!(buf.line_col_to_index((5,  3)),  26);  // l
+        assert_eq!(buf.line_col_to_index((5,  4)),  27);  // d
+        assert_eq!(buf.line_col_to_index((5,  5)),  28);  // !
+        assert_eq!(buf.line_col_to_index((5,  6)),  28);  // invalid line
+        assert_eq!(buf.line_col_to_index((5,  7)),  28);  // also
+
+        // this is last valid index, which is 28 since
+        // there is no /n
+        assert_eq!(buf.line_col_to_index((10, 2)), 29);    // invalid line 
     }
 
+    // add a \n at the end
     #[test]
     fn line_col_to_index_2() {
         let mut buf = Buffer::new();
-        buf.insert_text("Hi\nthere\npeople\nof\nthe\nworld!", 0);
+        // remember there is an off the end line when doc ends in \n
+        //  index        0           1           2          3
+        //  index        012 345678 9012345 678 9012 34567890
+        //  line         0   1      2       3   4    5       6
+        //  col          012 012345 0123456 012 0123 0123456 0 
+        buf.insert_text("Hi\nthere\npeople\nof\nthe\nworld!\n", 0);
+        assert!(buf.char_count() == 30);
 
-        let pos = buf.line_col_to_index((2, 10));
+        assert_eq!(buf.line_col_to_index((5,  0)),  23);  // w 
+        assert_eq!(buf.line_col_to_index((5,  1)),  24);  // o
+        assert_eq!(buf.line_col_to_index((5,  2)),  25);  // r
+        assert_eq!(buf.line_col_to_index((5,  3)),  26);  // l
+        assert_eq!(buf.line_col_to_index((5,  4)),  27);  // d
+        assert_eq!(buf.line_col_to_index((5,  5)),  28);  // !
+        assert_eq!(buf.line_col_to_index((5,  6)),  29);  // \n
+        assert_eq!(buf.line_col_to_index((5,  7)),  29);  // clips to end of line
 
-        assert_eq!(pos, 15);
+        assert_eq!(buf.line_col_to_index((6,  0)),  30);  // extra one beyond line
+        assert_eq!(buf.line_col_to_index((6,  1)),  30);  // clips to final character
+
+        // this is last valid index, which is 28 since
+        // there is no /n
+        assert_eq!(buf.line_col_to_index((10, 2)), 30);    // invalid line 
     }
+
 
     #[test]
     fn line_col_to_index_3() {
-        let mut buf = Buffer::new();
-        buf.insert_text("Hi\nthere\npeople\nof\nthe\nworld!", 0);
-
-        let pos = buf.line_col_to_index((10, 2));
-
-        assert!(pos == 29);
+        // try on empty buffer
+        let buf = Buffer::new();
+        // should always be 0
+        assert_eq!(buf.line_col_to_index((0,  0)),  0);  
+        assert_eq!(buf.line_col_to_index((5,  0)),  0);  
+        assert_eq!(buf.line_col_to_index((5,  1)),  0);  
+        assert_eq!(buf.line_col_to_index((10,  10)),  0);  
     }
 
     #[test]
     fn line_col_to_index_4() {
         let mut buf = Buffer::new();
-        buf.insert_text("Hello\nworld!\n", 0);
+        //               01234 5012345 6
+        //               012345 67890
+        buf.insert_text("Hello\nworld!\n", 0); // is 13 characters
+        println!("len_chars:{}",buf.char_count());
 
         assert_eq!(buf.line_col_to_index((0, 0)), 0);
-        assert_eq!(buf.line_col_to_index((0, 5)), 5);
-        assert_eq!(buf.line_col_to_index((0, 6)), 5);
-
+        assert_eq!(buf.line_col_to_index((0, 1)), 1);
+        assert_eq!(buf.line_col_to_index((0, 2)), 2);
+        assert_eq!(buf.line_col_to_index((0, 3)), 3);
+        assert_eq!(buf.line_col_to_index((0, 4)), 4);
+        assert_eq!(buf.line_col_to_index((0, 5)), 5);  // last col in row 0 
+        assert_eq!(buf.line_col_to_index((0, 6)), 5);  // invalid col in that row, return last
+        assert_eq!(buf.line_col_to_index((0, 7)), 5);  // invalid col in that row, return last
         assert_eq!(buf.line_col_to_index((1, 0)), 6);
-        assert_eq!(buf.line_col_to_index((1, 6)), 12);
-        assert_eq!(buf.line_col_to_index((1, 7)), 12);
-
+        assert_eq!(buf.line_col_to_index((1, 1)), 7);
+        assert_eq!(buf.line_col_to_index((1, 2)), 8);
+        assert_eq!(buf.line_col_to_index((1, 3)), 9);
+        assert_eq!(buf.line_col_to_index((1, 4)), 10);
+        assert_eq!(buf.line_col_to_index((1, 5)), 11);
+        assert_eq!(buf.line_col_to_index((1, 6)), 12);   // last col in row 1
+        assert_eq!(buf.line_col_to_index((1, 7)), 12);   // invalid col in that row, return last
+        assert_eq!(buf.line_col_to_index((1, 100)), 12); // way beyond end of row 1
         assert_eq!(buf.line_col_to_index((2, 0)), 13);
         assert_eq!(buf.line_col_to_index((2, 1)), 13);
     }
