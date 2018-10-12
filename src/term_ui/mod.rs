@@ -363,22 +363,25 @@ impl TermUI {
         // Calculate all the starting info
         let gutter_width = editor.get_gutter_width();  
         debug!("gutter_width:{}", gutter_width);  // i.e. 3
+        
+        //let mut char_index = editor.get_view_char_idx();
+        //debug!("char_index:{}", char_index);  // 0 
 
         // get the line and column of the current editor.view_pos.0
         let (line_index, col_i) = editor.index_to_line_col_view_pos_row();  
         debug!("line_index:{}, col_i:{}", line_index, col_i);  // 0, 0
-        
+                
         // plain function, not method
         let (mut line_block_index, _huh) = Editor::block_index_and_offset(col_i);
         debug!("line_block_index:{}, _huh:{}", line_block_index, _huh); // 0, 0
-        
+
         let mut char_index = editor.line_col_to_index(line_index, line_block_index);
         debug!("char_index:{}", char_index);  // 0 
                 
         let vis_line_offset = editor.calc_vis_line_offset(line_index, 
                                                           line_block_index, 
                                                           char_index);
-
+                
         debug!("vis_line_offset:{}", vis_line_offset);  // 0 
 
         let mut screen_line = c1.0 as isize - vis_line_offset as isize;
@@ -416,18 +419,18 @@ impl TermUI {
 
                 // let dc = digit_count(line_num as u32, 10);
                 debug!("{:?},{},{}", line, line.len_bytes(), line.len_chars());
-                // gutter width is supposed to have one extra space at end, 
-                // so gutter_width -1 gives max width of digit_count
-                let lnx = c1.1 + (gutter_width - 1 - digit_count(line_num));
-                let lny = screen_line as usize;
-                if lny >= c1.0 && lny <= c2.0 {
-                    self.screen.draw(
-                        lnx,
-                        lny,
-                        &format!("{}", line_num)[..],
-                        Style(Color::White, Color::Blue),
-                    );
-                }
+            // gutter width is supposed to have one extra space at end, 
+            // so gutter_width -1 gives max width of digit_count
+            let lnx = c1.1 + (gutter_width - 1 - digit_count(line_num));
+            let lny = screen_line as usize;
+            if lny >= c1.0 && lny <= c2.0 {
+                self.screen.draw(
+                    lnx,
+                    lny,
+                    &format!("{}", line_num)[..],
+                    Style(Color::White, Color::Blue),
+                );
+            }
             }
 
             // Loop through the graphemes of the line and print them to

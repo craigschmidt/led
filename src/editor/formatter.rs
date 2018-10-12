@@ -66,10 +66,6 @@ impl LineFormatter {
         }
     }
 
-    pub fn single_line_height(&self) -> usize {
-        return 1; // TODO: factor out? what is the point of this
-    }
-
     /// Returns the 2d visual dimensions of the given text when formatted
     /// by the formatter.
     /// The text to be formatted is passed as a grapheme iterator.
@@ -77,15 +73,22 @@ impl LineFormatter {
     where
         T: Iterator<Item = RopeSlice<'a>>,
     {
-        let mut dim: (usize, usize) = (0, 0);   // rows and columns used
+        let mut maxheight = 0;
+        let mut maxwidth = 0;
 
-        for (_, pos, width) in self.iter(g_iter) {
-            dim = (max(dim.0, pos.0), max(dim.1, pos.1 + width));
+        for (_g, pos, width) in self.iter(g_iter) {
+
+            maxheight = max(maxheight, pos.0);        // max row
+            maxwidth = max(maxwidth, pos.1 + width);  // max col + width
         }
 
-        dim.0 += self.single_line_height();
+        // we have the max row and col + width
+        // to convert to a height we need +=1
+        // the width doesn't need that because of the width
+        // TODO: is this valid for multiwidth at end
+        maxheight += 1; // was single_line_height
 
-        return dim;
+        return (maxheight,maxwidth);
     }
 
     /// Converts a char index within a text into a visual 2d position.
@@ -162,7 +165,7 @@ impl LineFormatter {
                     }
 
                     if is_last_block {
-                        line_i += 1;
+                    line_i += 1;
                         block_index = 0;
                     } else {
                         block_index += 1;
@@ -175,8 +178,8 @@ impl LineFormatter {
                     }
 
                     if block_index == 0 {
-                        line_i -= 1;
-                        line = buf.get_line(line_i);
+                    line_i -= 1;
+                    line = buf.get_line(line_i);
                         block_index = last_block_index(line.len_chars());
                     } else {
                         block_index -= 1;
@@ -252,7 +255,7 @@ impl LineFormatter {
         &'a self,
         g_iter: T,
         v2d: (usize, usize),
-        _: (RoundingBehavior, RoundingBehavior),
+        _ : (RoundingBehavior, RoundingBehavior),
     ) -> usize
     where
         T: Iterator<Item = RopeSlice<'a>>,
@@ -376,21 +379,21 @@ where
 
             if self.f.maintain_indent {
                 let pos = (
-                    self.pos.0 + self.f.single_line_height(),
+                    self.pos.0 + 1,  // single_line_height
                     self.indent + self.f.wrap_additional_indent,
                 );
                 self.pos = (
-                    self.pos.0 + self.f.single_line_height(),
+                    self.pos.0 + 1, // single_line_height
                     self.indent + self.f.wrap_additional_indent + width,
                 );
                 return Some((g, pos, width));
             } else {
                 let pos = (
-                    self.pos.0 + self.f.single_line_height(),
+                    self.pos.0 + 1, // single_line_height
                     self.f.wrap_additional_indent,
                 );
                 self.pos = (
-                    self.pos.0 + self.f.single_line_height(),
+                    self.pos.0 + 1,  // single_line_height
                     self.f.wrap_additional_indent + width,
                 );
                 return Some((g, pos, width));
@@ -469,12 +472,12 @@ where
                         if self.pos.1 > 0 {
                             if self.f.maintain_indent {
                                 self.pos = (
-                                    self.pos.0 + self.f.single_line_height(),
+                                    self.pos.0 + 1,   // single_line_height
                                     self.indent + self.f.wrap_additional_indent,
                                 );
                             } else {
                                 self.pos = (
-                                    self.pos.0 + self.f.single_line_height(),
+                                    self.pos.0 + 1,  // single_line_height
                                     self.f.wrap_additional_indent,
                                 );
                             }
@@ -527,25 +530,33 @@ mod tests {
         // Hello there, stranger!
         let text = Rope::from_str("Hello there, stranger!"); // 22 graphemes long
 
-        let mut f = LineFormatter::new(4);
-        f.wrap_type = WrapType::CharWrap(0);
-        f.maintain_indent = false;
-        f.wrap_additional_indent = 0;
-        f.set_wrap_width(80);
+        let f = LineFormatter {
+            tab_width : 4,
+            wrap_type : WrapType::CharWrap(80),
+            maintain_indent  : false, 
+            wrap_additional_indent : 0,
+        };
 
         assert_eq!(f.dimensions(RopeGraphemes::new(&text.slice(..))), (1, 22));
     }
 
     #[test]
     fn dimensions_2() {
-        let text = Rope::from_str("Hello there, stranger!  How are you doing this fine day?"); // 56 graphemes long
+        let text = Rope::from_str(
+            "Hello there,\
+             stranger!  H\
+             ow are you d\
+             oing this fi\
+             ne day?");    // 56 graphemes long
 
-        let mut f = LineFormatter::new(4);
-        f.wrap_type = WrapType::CharWrap(0);
-        f.maintain_indent = false;
-        f.wrap_additional_indent = 0;
-        f.set_wrap_width(12);
+        let f = LineFormatter {
+            tab_width : 4,
+            wrap_type : WrapType::CharWrap(12),
+            maintain_indent  : false, 
+            wrap_additional_indent : 0,
+        };
 
+        // get 5 rows and 12 columns
         assert_eq!(f.dimensions(RopeGraphemes::new(&text.slice(..))), (5, 12));
     }
 
@@ -565,11 +576,12 @@ mod tests {
              。",
         );
 
-        let mut f = LineFormatter::new(4);
-        f.wrap_type = WrapType::CharWrap(0);
-        f.maintain_indent = false;
-        f.wrap_additional_indent = 0;
-        f.set_wrap_width(12);
+       let f = LineFormatter {
+            tab_width : 4,
+            wrap_type : WrapType::CharWrap(12),
+            maintain_indent  : false, 
+            wrap_additional_indent : 0,
+        };
 
         assert_eq!(f.dimensions(RopeGraphemes::new(&text.slice(..))), (10, 12));
     }
@@ -590,24 +602,83 @@ mod tests {
              。",
         );
 
-        let mut f = LineFormatter::new(4);
-        f.wrap_type = WrapType::WordWrap(0);
-        f.maintain_indent = false;
-        f.wrap_additional_indent = 0;
-        f.set_wrap_width(12);
+        // WordWrap this time
+        let f = LineFormatter {
+            tab_width : 4,
+            wrap_type : WrapType::WordWrap(12),
+            maintain_indent  : false, 
+            wrap_additional_indent : 0,
+        };
 
         assert_eq!(f.dimensions(RopeGraphemes::new(&text.slice(..))), (10, 12));
+    }
+
+    #[test]
+    fn dimensions_5() {
+        let text = Rope::from_str(
+            "Hello \
+            there, \
+            stranger! \
+            How are you \
+            doing this \
+            fine day?");    // 56 graphemes long
+
+        // WordWrap this time
+        let f = LineFormatter {
+            tab_width : 4,
+            wrap_type : WrapType::WordWrap(12),
+            maintain_indent  : false, 
+            wrap_additional_indent : 0,
+        };
+
+        // this prints out the solution with word wraps
+        let mut g_iter = RopeGraphemes::new(&text.slice(..));
+        for (g, pos, width) in f.iter(g_iter) {
+            println!("{},{:?},{}", g, pos, width);
+        }
+
+        // note that dimensions could potentially give less than WordWrap width
+        assert_eq!(f.dimensions(RopeGraphemes::new(&text.slice(..))), (6, 12));
+    }
+
+    #[test]
+    fn dimensions_6() {
+        // what do we get for a width with 10 letter words
+        // and a 15 character wraps
+        let text = Rope::from_str(
+            "0123456789 \
+             0123456789 \
+             0123456789 \
+             0123456789");
+
+        // WordWrap this time
+        let f = LineFormatter {
+            tab_width : 4,
+            wrap_type : WrapType::WordWrap(15),
+            maintain_indent  : false, 
+            wrap_additional_indent : 0,
+        };
+
+        // this prints out the solution with word wraps
+        // let mut g_iter = RopeGraphemes::new(&text.slice(..));
+        // for (g, pos, width) in f.iter(g_iter) {
+        //     println!("{},{:?},{}", g, pos, width);
+        // }
+
+        // note that dimensions could potentially give less than WordWrap width
+        assert_eq!(f.dimensions(RopeGraphemes::new(&text.slice(..))), (4, 11));
     }
 
     #[test]
     fn index_to_v2d_1() {
         let text = Rope::from_str("Hello there, stranger!"); // 22 graphemes long
 
-        let mut f = LineFormatter::new(4);
-        f.wrap_type = WrapType::CharWrap(0);
-        f.maintain_indent = false;
-        f.wrap_additional_indent = 0;
-        f.set_wrap_width(80);
+        let mut f = LineFormatter {
+            tab_width: 4,
+            wrap_type: WrapType::CharWrap(80),
+            maintain_indent: false,
+            wrap_additional_indent: 0,
+        };
 
         assert_eq!(
             f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 0),

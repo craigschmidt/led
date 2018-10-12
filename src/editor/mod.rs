@@ -60,6 +60,13 @@ impl Editor {
         }
     }
 
+    // first character to display in the editor
+    // try go refactor to this once avoiding line length
+    #[allow(dead_code)] 
+    pub fn get_view_char_idx(&self) -> usize { 
+        return self.view_pos.0;
+    }
+
     pub fn new_from_file(path: &Path) -> Editor {
         let buf = match Buffer::new_from_file(path) {
             Ok(b) => b,
@@ -569,7 +576,7 @@ impl Editor {
 
     pub fn cursor_up(&mut self, n: usize) {
         for c in self.cursors.iter_mut() {
-            let vmove = -1 * (n * self.formatter.single_line_height()) as isize;
+            let vmove =  -1*n  as isize;  // single_line_height
 
             let mut temp_index = self.formatter.index_offset_vertical_v2d(
                 &self.buffer,
@@ -606,7 +613,7 @@ impl Editor {
 
     pub fn cursor_down(&mut self, n: usize) {
         for c in self.cursors.iter_mut() {
-            let vmove = (n * self.formatter.single_line_height()) as isize;
+            let vmove = n as isize;  // single_line_height
 
             let mut temp_index = self.formatter.index_offset_vertical_v2d(
                 &self.buffer,
@@ -643,7 +650,7 @@ impl Editor {
 
     pub fn page_up(&mut self) {
         let move_amount =
-            self.view_dim.0 - max(self.view_dim.0 / 8, self.formatter.single_line_height());
+            self.view_dim.0 - max(self.view_dim.0 / 8, 1);  // single_line_height
         self.view_pos.0 = self.formatter.index_offset_vertical_v2d(
             &self.buffer,
             self.view_pos.0,
@@ -659,7 +666,7 @@ impl Editor {
 
     pub fn page_down(&mut self) {
         let move_amount =
-            self.view_dim.0 - max(self.view_dim.0 / 8, self.formatter.single_line_height());
+            self.view_dim.0 - max(self.view_dim.0 / 8, 1);  // single_line_height
         self.view_pos.0 = self.formatter.index_offset_vertical_v2d(
             &self.buffer,
             self.view_pos.0,
@@ -737,7 +744,6 @@ impl Editor {
         self.formatter.index_to_horizontal_v2d(&self.buffer, char_idx)
     }
 
-    // TODO: what's the deal with the _?
     // TODO: stopped here
     pub fn vis_iter<'a>(&'a self, line_block_index: usize, line : &'a RopeSlice) -> 
     LineFormatterVisIter<'a, RopeGraphemes<'a>> {
