@@ -10,7 +10,7 @@ use self::formatter::block_index_and_offset;
 use ropey::{RopeSlice,iter};
 use std::cmp::{max, min};
 use std::path::{Path, PathBuf};
-use string_utils::{char_count, rope_slice_to_line_ending, LineEnding};
+use string_utils::{char_count, rope_slice_to_line_ending, line_ending_to_str, LineEnding};
 use utils::{digit_count, RopeGraphemes};
 
 mod buffer;
@@ -591,6 +591,7 @@ impl Editor {
                 Round,
             );
 
+            // back up to a valid grapheme
             if !self.buffer.is_grapheme(temp_index) {
                 temp_index = self.buffer.nth_prev_grapheme(temp_index, 1);
             }
@@ -782,8 +783,29 @@ impl Editor {
     }
 
     // LineEnding is copy
-    pub fn get_line_ending_type(&self) -> LineEnding {
-        self.line_ending_type
+    // pub fn get_line_ending_type(&self) -> LineEnding {
+    //     self.line_ending_type
+    // }
+
+    // get the actual str form of line ending
+    pub fn get_line_ending(&self) -> &'static str{
+        line_ending_to_str(self.line_ending_type)
+    }
+
+    // get the human readable form of the line ending
+    // not the str itself
+    pub fn get_line_ending_name(&self) -> &str {
+        match self.line_ending_type {
+            LineEnding::None => "None",
+            LineEnding::CRLF => "CRLF",
+            LineEnding::LF => "LF",
+            LineEnding::VT => "VT",
+            LineEnding::FF => "FF",
+            LineEnding::CR => "CR",
+            LineEnding::NEL => "NEL",
+            LineEnding::LS => "LS",
+            LineEnding::PS => "PS",
+        }
     }
 
     // the left gutter is the difference in space between the editor and view width

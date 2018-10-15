@@ -6,7 +6,7 @@ use termion::event::{Event, Key};
 use termion::input::TermRead;
 
 use editor::Editor;
-use string_utils::{line_ending_to_str, rope_slice_is_line_ending, LineEnding};
+use string_utils::rope_slice_is_line_ending;
 
 use utils::digit_count;
 
@@ -194,7 +194,7 @@ impl TermUI {
                     // use the desired line ending in 
                     // place of the literal \n
                     Key::Char('\n') => {
-                        let nl = line_ending_to_str(self.editor.get_line_ending_type());
+                        let nl = self.editor.get_line_ending();
                         self.editor.insert_text_at_cursor(nl);
                     }
 
@@ -327,17 +327,7 @@ impl TermUI {
             .draw(c2.1 - pstring.len().min(c2.1), c1.0, &pstring[..], style);
 
         // Text encoding info and tab style
-        let nl = match editor.get_line_ending_type() {
-            LineEnding::None => "None",
-            LineEnding::CRLF => "CRLF",
-            LineEnding::LF => "LF",
-            LineEnding::VT => "VT",
-            LineEnding::FF => "FF",
-            LineEnding::CR => "CR",
-            LineEnding::NEL => "NEL",
-            LineEnding::LS => "LS",
-            LineEnding::PS => "PS",
-        };
+        let nl = editor.get_line_ending_name(); // human readable form
         let soft_tabs_str = if editor.get_soft_tabs()
             { "spaces" } 
         else 
