@@ -4,10 +4,8 @@ use std::time;
 use termion;
 use termion::event::{Event, Key};
 use termion::input::TermRead;
-
 use editor::Editor;
 use string_utils::rope_slice_is_line_ending;
-
 use utils::digit_count;
 
 #[allow(dead_code)] // don't care about unused colors
@@ -395,13 +393,6 @@ impl TermUI {
         let mut line_num = line_index + 1;
 
         // line is ropey::RopeSlice
-        // there is a weird bug where this has an extra blank line
-        // fix the source but for now just skip it
-        // note: this bug has been fixed
-        // let mut k = 0;
-        // this is a hack to fix problem with ropey 0.9.1 where it ignores 
-        // the last /n in a file
-
         for line in editor.line_iter_at_index(line_index) {
             // Print line number
 
