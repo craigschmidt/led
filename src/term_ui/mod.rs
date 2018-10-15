@@ -372,12 +372,12 @@ impl TermUI {
                 
         debug!("vis_line_offset:{}", vis_line_offset);  // 0 
 
-        let mut screen_line = c1.0 as isize - vis_line_offset as isize;
+        let mut screen_line : usize = c1.0 - vis_line_offset;
         debug!("screen_line:{}", screen_line);  // 1
 
         // column to start drawing screen of text 
         // skip gutter and and the col of c1.1
-        let screen_col = c1.1 as isize + gutter_width as isize;
+        let screen_col : usize = c1.1 + gutter_width;
         debug!("screen_col:{}", screen_col); // 3  so the starting column of 
 
         // Fill in the gutter with the appropriate background
@@ -450,16 +450,16 @@ impl TermUI {
                         last_pos_y = pos_y;
                     }
                     // Calculate the cell coordinates at which to draw the grapheme
-                    let px = pos_x as isize + screen_col - editor.get_vis_horizontal_offset() as isize;
-                    let py = lines_traversed as isize + screen_line;
+                    let px: usize = pos_x + screen_col - editor.get_vis_horizontal_offset();
+                    let py: usize = lines_traversed + screen_line;
 
                     // If we're off the bottom, we're done
-                    if py > c2.0 as isize {
+                    if py > c2.0 {
                         return;
                     }
 
                     // Draw the grapheme to the screen if it's in bounds
-                    if (px >= c1.1 as isize) && (py >= c1.0 as isize) && (px <= c2.1 as isize) {
+                    if (px >= c1.1) && (py >= c1.0) && (px <= c2.1) {
                         // Check if the character is within a cursor
                         let at_cursor = editor.at_cursor(char_index);
 
@@ -468,8 +468,8 @@ impl TermUI {
                         if rope_slice_is_line_ending(&g) {
                             if at_cursor {
                                 self.screen.draw(
-                                    px as usize,
-                                    py as usize,
+                                    px,
+                                    py,
                                     " ",
                                     Style(Color::Black, Color::White),
                                 );
@@ -477,11 +477,11 @@ impl TermUI {
                         } else if g == "\t" {
                             // print the right number of spaces for a tab
                             for i in 0..width {
-                                let tpx = px as usize + i;
+                                let tpx = px + i;
                                 if tpx <= c2.1 {
                                     self.screen.draw(
-                                        tpx as usize,
-                                        py as usize,
+                                        tpx,
+                                        py,
                                         " ",
                                         Style(Color::White, Color::Black),
                                     );
@@ -490,8 +490,8 @@ impl TermUI {
                             // and maybe print a cursor
                             if at_cursor {
                                 self.screen.draw(
-                                    px as usize,
-                                    py as usize,
+                                    px,
+                                    py,
                                     " ",
                                     Style(Color::Black, Color::White),
                                 );
@@ -501,15 +501,15 @@ impl TermUI {
                             // either with as a cursor or not
                             if at_cursor {
                                 self.screen.draw_rope_slice(
-                                    px as usize,
-                                    py as usize,
+                                    px,
+                                    py,
                                     &g,
                                     Style(Color::Black, Color::White),
                                 );
                             } else {
                                 self.screen.draw_rope_slice(
-                                    px as usize,
-                                    py as usize,
+                                    px,
+                                    py,
                                     &g,
                                     Style(Color::White, Color::Black),
                                 );
@@ -535,7 +535,7 @@ impl TermUI {
             }
 
             line_block_index = 0;
-            screen_line += lines_traversed as isize + 1;
+            screen_line += lines_traversed + 1;
             line_num += 1;
         }
 
@@ -553,7 +553,7 @@ impl TermUI {
             let pos_x = editor
                 .index_to_horizontal_v2d(editor.char_count());
             debug!("pos_x:{}", pos_x);
-            let px = pos_x as isize + screen_col - editor.get_vis_horizontal_offset() as isize;
+            let px : usize = pos_x + screen_col - editor.get_vis_horizontal_offset();
             debug!("px:{}",px);
             // TODO: this causes a bug when -1, should be -2
             // but then typing a CR doesn't advance to next line
@@ -569,11 +569,11 @@ impl TermUI {
             //             };
             // debug!("py:{}, {}", py, last_line_ends_in_line_ending);
 
-            if (px >= c1.1 as isize) && (py >= c1.0 as isize) && (px <= c2.1 as isize) && (py <= c2.0 as isize)
+            if (px >= c1.1) && (py >= c1.0) && (px <= c2.1) && (py <= c2.0)
             {
                 self.screen.draw(
-                    px as usize,
-                    py as usize,
+                    px,
+                    py,
                     " ",
                     Style(Color::Black, Color::Red),
                 );
