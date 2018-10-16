@@ -343,7 +343,7 @@ where
 {
     grapheme_iter: T,
     f: &'a LineFormatter,
-    pos: (usize, usize),
+    pos: (usize, usize),  // row and column of slice
 
     indent: usize,
     indent_found: bool,
@@ -505,7 +505,7 @@ where
 fn grapheme_vis_width_at_vis_pos(g: RopeSlice, pos: usize, tab_width: usize) -> usize {
     if g == "\t" {
         let ending_pos = ((pos / tab_width) + 1) * tab_width;
-        return ending_pos - pos;
+        return ending_pos - pos;  // width is how far we went
     } else if rope_slice_is_line_ending(&g) {
         return 1;
     } else {
@@ -523,6 +523,49 @@ mod tests {
     use self::LineFormatter;
     use ropey::Rope;
     use utils::RopeGraphemes;
+
+    #[test]
+    fn grapheme_vis_width_at_vis_pos_1() {
+        // say we have a tab width of 4
+        let tab_width = 4;
+        // a tab should line next character up with next available 0
+        // 0123012301230123012301230123012301230123
+        // He  ll      o th    ere, st ranger!
+        //    2   2   4    4          1   <- tab width
+        let text = Rope::from_str("He\tll\t\to th\tere, st\t税\n"); 
+        let mut iter = RopeGraphemes::new(&text.slice(..));  // grapheme iterator
+        let mut pos = 0;  // current pos
+
+        let correct_widths = vec![  1,  // H 
+                                    1,  // e 
+                                    2,  // \t
+                                    1,  // l
+                                    1,  // l
+                                    2,  // \t
+                                    4,  // \t
+                                    1,  // o
+                                    1,  // space
+                                    1,  // t
+                                    1,  // h
+                                    4,  // \t
+                                    1,  // e
+                                    1,  // r
+                                    1,  // e
+                                    1,  // ,
+                                    1,  // space
+                                    1,  // s
+                                    1,  // t
+                                    1,  // \t
+                                    2,  // 税  width 2
+                                    1];  // \n  end of line is width 1
+
+        // note the the position is horizontal on the line, not char_idx
+        for (i,g) in iter.enumerate() {
+            let mut width = grapheme_vis_width_at_vis_pos(g,pos,tab_width);
+            assert_eq!(width,correct_widths[i], "{},{}", i, g);  // H
+            pos += width; // need to add width as we go go get pos
+        }
+    }
 
     #[test]
     fn dimensions_1() {

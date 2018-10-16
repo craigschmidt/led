@@ -467,52 +467,27 @@ impl TermUI {
                         // if off the end of the line, and a cursor
                         if rope_slice_is_line_ending(&g) {
                             if at_cursor {
-                                self.screen.draw(
-                                    px,
-                                    py,
-                                    " ",
-                                    Style(Color::Black, Color::White),
-                                );
+                                self.screen.draw(px,py," ",Style(Color::Black, Color::White));
                             }
                         } else if g == "\t" {
                             // print the right number of spaces for a tab
                             for i in 0..width {
                                 let tpx = px + i;
                                 if tpx <= c2.1 {
-                                    self.screen.draw(
-                                        tpx,
-                                        py,
-                                        " ",
-                                        Style(Color::White, Color::Black),
-                                    );
+                                    self.screen.draw(tpx,py," ",Style(Color::White, Color::Black));
                                 }
                             }
                             // and maybe print a cursor
                             if at_cursor {
-                                self.screen.draw(
-                                    px,
-                                    py,
-                                    " ",
-                                    Style(Color::Black, Color::White),
-                                );
+                                self.screen.draw(px,py," ",Style(Color::Black, Color::White));
                             }
                         } else {
                             // just print a regular character
                             // either with as a cursor or not
                             if at_cursor {
-                                self.screen.draw_rope_slice(
-                                    px,
-                                    py,
-                                    &g,
-                                    Style(Color::Black, Color::White),
-                                );
+                                self.screen.draw_rope_slice(px,py,&g,Style(Color::Black, Color::White));
                             } else {
-                                self.screen.draw_rope_slice(
-                                    px,
-                                    py,
-                                    &g,
-                                    Style(Color::White, Color::Black),
-                                );
+                                self.screen.draw_rope_slice(px,py,&g,Style(Color::White, Color::Black));
                             }
                         }
                     }
@@ -555,28 +530,9 @@ impl TermUI {
             debug!("pos_x:{}", pos_x);
             let px : usize = pos_x + screen_col - editor.get_vis_horizontal_offset();
             debug!("px:{}",px);
-            // TODO: this causes a bug when -1, should be -2
-            // but then typing a CR doesn't advance to next line
-            // how can it alter the state?
-            // back up to the previous value of screen_line
-            // note: bug doesn't happen when the screen is full of text!
             let py = screen_line - 1;
-
-            // if last_line_ends_in_line_ending {
-            //                 screen_line
-            //             } else { 
-            //                 screen_line - 1
-            //             };
-            // debug!("py:{}, {}", py, last_line_ends_in_line_ending);
-
-            if (px >= c1.1) && (py >= c1.0) && (px <= c2.1) && (py <= c2.0)
-            {
-                self.screen.draw(
-                    px,
-                    py,
-                    " ",
-                    Style(Color::Black, Color::Red),
-                );
+            if (px >= c1.1) && (py >= c1.0) && (px <= c2.1) && (py <= c2.0) {
+                self.screen.draw(px,py," ",Style(Color::Black, Color::Red));
             }
         }
     }
