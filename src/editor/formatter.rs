@@ -533,7 +533,7 @@ mod tests {
         // He  ll      o th    ere, st ranger!
         //    2   2   4    4          1   <- tab width
         let text = Rope::from_str("He\tll\t\to th\tere, st\t税\n"); 
-        let mut iter = RopeGraphemes::new(&text.slice(..));  // grapheme iterator
+        let iter = RopeGraphemes::new(&text.slice(..));  // grapheme iterator
         let mut pos = 0;  // current pos
 
         let correct_widths = vec![  1,  // H 
@@ -675,7 +675,7 @@ mod tests {
         };
 
         // this prints out the solution with word wraps
-        let mut g_iter = RopeGraphemes::new(&text.slice(..));
+        let g_iter = RopeGraphemes::new(&text.slice(..));
         for (g, pos, width) in f.iter(g_iter) {
             println!("{},{:?},{}", g, pos, width);
         }
@@ -716,7 +716,7 @@ mod tests {
     fn index_to_v2d_1() {
         let text = Rope::from_str("Hello there, stranger!"); // 22 graphemes long
 
-        let mut f = LineFormatter {
+        let f = LineFormatter {
             tab_width: 4,
             wrap_type: WrapType::CharWrap(80),
             maintain_indent: false,
