@@ -36,7 +36,6 @@ pub enum RoundingBehavior {
 pub struct LineFormatter {
     pub tab_width: u8,                  // how big are tabs
     pub wrap_type: WrapType,            // do we wrap lines
-    pub maintain_indent: bool,          // TODO: what's this do
     pub wrap_additional_indent: usize,  // any extra indentation on wrapped lines
 }
 
@@ -46,7 +45,6 @@ impl LineFormatter {
         LineFormatter {
             tab_width: tab_width,
             wrap_type: WrapType::WordWrap(80),  // a default, really set by set_wrap_width
-            maintain_indent: false,
             wrap_additional_indent: 0,
         }
     }
@@ -304,8 +302,6 @@ impl LineFormatter {
             grapheme_iter: g_iter,
             f: self,        // interesting, contains access to self
             pos: (0, 0),
-            indent: 0,
-            indent_found: false,
             word_buf: Vec::new(),
             word_i: 0,
         }
@@ -349,9 +345,6 @@ where
     pos: (usize, usize),    // (row,column) of current position, 
                             // updated to next position right before we return
 
-    indent: usize,
-    indent_found: bool,
-
     word_buf: Vec<RopeSlice<'a>>,   // stores a vector of graphemes for the word
     word_i: usize,                  // location within the current word that we've returned
 }
@@ -387,58 +380,26 @@ where
         let width = grapheme_vis_width_at_vis_pos(g, self.pos.1, self.f.tab_width as usize);
 
         // if starting position of following character is too wide need to wrap
-        // TODO: could a double wide character be clipped in this case
         if (self.pos.1 + width) > wrap_width {
+            // remember current position to return
+            let pos = (
+                // start a new line with just the additional indent for col
+                self.pos.0 + 1,  // single_line_height
+                self.f.wrap_additional_indent,  
+            );
+            // advance to next position by adding width
+            self.pos = (
+                self.pos.0 + 1,  // single_line_height
+                self.f.wrap_additional_indent + width,
+            );
+            return Some((g, pos, width));
 
-            if !self.indent_found {
-                self.indent = 0;
-                // this starts out false, and only can switch to true
-                self.indent_found = true;   
-            }
-
-            if self.f.maintain_indent {
-                // move current run of whitespace down to the next line????
-                // remember current position to return
-                let pos = (
-                    // add the indent we've been tracking to additional indent
-                    self.pos.0 + 1,  // single_line_height, move to next row
-                    self.indent + self.f.wrap_additional_indent,
-                );
-                // advance to next position by adding width
-                self.pos = (
-                    self.pos.0 + 1, // single_line_height
-                    self.indent + self.f.wrap_additional_indent + width,
-                );
-                return Some((g, pos, width));
-
-            } else {
-                // break any whitespace where we are
-                // remember current position to return
-                let pos = (
-                    // start a new line with just the additional indent for col
-                    self.pos.0 + 1,  // single_line_height
-                    self.f.wrap_additional_indent,  
-                );
-                // advance to next position by adding width
-                self.pos = (
-                    self.pos.0 + 1,  // single_line_height
-                    self.f.wrap_additional_indent + width,
-                );
-                return Some((g, pos, width));
-            }
         } else {
 
-            // don't wrap
-            if !self.indent_found {
-                if rope_slice_is_whitespace(&g) {
-                    self.indent += width;
-                } else {
-                    self.indent_found = true;
-                }
-            }
-
             // normal return stuff
+            // remember current position to return
             let pos = self.pos;
+            // advance to next position by adding width
             self.pos = (self.pos.0, self.pos.1 + width);
             return Some((g, pos, width));
         }
@@ -475,7 +436,7 @@ where
             WrapType::WordWrap(wrap_width) => {
                 // Get next word if necessary
                 if self.word_i >= self.word_buf.len() {
-                    let mut word_width = 0;
+                    let mut word_width = 0;   // total width of all word graphemes
                     self.word_buf.truncate(0);
                     while let Some(g) = self.grapheme_iter.next() {
                         self.word_buf.push(g);
@@ -490,36 +451,24 @@ where
                         }
                     }
 
+                    // no word left
                     if self.word_buf.len() == 0 {
                         return None;
-                    } else if !self.indent_found && !rope_slice_is_whitespace(&self.word_buf[0]) {
-                        self.indent_found = true;
                     }
 
-                    // Move to next line if necessary
+                    // Move to next line if necessary if new word doesn't fit
                     if (self.pos.1 + word_width) > wrap_width {
-                        if !self.indent_found {
-                            self.indent = 0;
-                            self.indent_found = true;
-                        }
-
                         if self.pos.1 > 0 {
-                            if self.f.maintain_indent {
-                                self.pos = (
-                                    self.pos.0 + 1,   // single_line_height
-                                    self.indent + self.f.wrap_additional_indent,
-                                );
-                            } else {
-                                self.pos = (
-                                    self.pos.0 + 1,  // single_line_height
-                                    self.f.wrap_additional_indent,
-                                );
-                            }
+                            self.pos = (
+                                self.pos.0 + 1,  // single_line_height
+                                self.f.wrap_additional_indent,
+                            );
                         }
                     }
 
                     self.word_i = 0;
                 }
+                // have someething in word_buf to read here
 
                 // Iterate over the word
                 let g = self.word_buf[self.word_i];
@@ -612,7 +561,6 @@ mod tests {
         let f = LineFormatter {
             tab_width : 4,
             wrap_type : WrapType::CharWrap(80),
-            maintain_indent  : false, 
             wrap_additional_indent : 0,
         };
 
@@ -631,7 +579,6 @@ mod tests {
         let f = LineFormatter {
             tab_width : 4,
             wrap_type : WrapType::CharWrap(12),
-            maintain_indent  : false, 
             wrap_additional_indent : 0,
         };
 
@@ -658,7 +605,6 @@ mod tests {
        let f = LineFormatter {
             tab_width : 4,
             wrap_type : WrapType::CharWrap(12),
-            maintain_indent  : false, 
             wrap_additional_indent : 0,
         };
 
@@ -685,7 +631,6 @@ mod tests {
         let f = LineFormatter {
             tab_width : 4,
             wrap_type : WrapType::WordWrap(12),
-            maintain_indent  : false, 
             wrap_additional_indent : 0,
         };
 
@@ -706,7 +651,6 @@ mod tests {
         let f = LineFormatter {
             tab_width : 4,
             wrap_type : WrapType::WordWrap(12),
-            maintain_indent  : false, 
             wrap_additional_indent : 0,
         };
 
@@ -734,7 +678,6 @@ mod tests {
         let f = LineFormatter {
             tab_width : 4,
             wrap_type : WrapType::WordWrap(15),
-            maintain_indent  : false, 
             wrap_additional_indent : 0,
         };
 
@@ -749,13 +692,88 @@ mod tests {
     }
 
     #[test]
+    fn dimensions_7() {
+        // easy case is a multiple of 2 so fits double width
+        let text = Rope::from_str(
+            "税マイミ\
+             文末レ日\
+             題イぽじ\
+             や男目統\
+             。",
+        );
+
+        // WordWrap this time
+        let f = LineFormatter {
+            tab_width : 4,
+            wrap_type : WrapType::CharWrap(8),
+            wrap_additional_indent : 0,
+        };
+
+        assert_eq!(f.dimensions(RopeGraphemes::new(&text.slice(..))), (5, 8));
+    }
+
+    #[test]
+    fn dimensions_8() {
+        // check what happens with odd wrap width and double width char
+        // should only fit 3 onto a line
+        let text = Rope::from_str(
+            "税マイ\
+             ミ文末\
+             レ日題\
+             イぽじ\
+             や男目\
+             統。",
+        );
+
+        // WordWrap this time
+        let f = LineFormatter {
+            tab_width : 4,
+            wrap_type : WrapType::CharWrap(7),
+            wrap_additional_indent : 0,
+        };
+
+        assert_eq!(f.dimensions(RopeGraphemes::new(&text.slice(..))), (6, 6));
+    }
+
+    #[test]
+    fn dimensions_9() {
+        // check what happens with odd wrap width and double width char
+        // should only fit 3 onto a line
+        let text = Rope::from_str(
+            "税マイ\
+             ミ文末\
+             レ日題\
+             イぽじ\
+             や男目\
+             統。",
+        );
+
+        // WordWrap this time
+        let f = LineFormatter {
+            tab_width : 4,
+            wrap_type : WrapType::CharWrap(7),
+            wrap_additional_indent : 1,
+        };
+
+        // let g_iter = RopeGraphemes::new(&text.slice(..));
+
+        // for (g, pos, width) in f.iter(g_iter) {
+        //     println!("{},{:?},{}", g, pos, width);
+        // }
+
+        // now uses 7 cols for rows beyond the first
+        // from the space at the start of the line
+        assert_eq!(f.dimensions(RopeGraphemes::new(&text.slice(..))), (6, 7));
+    }
+
+
+    #[test]
     fn index_to_v2d_1() {
         let text = Rope::from_str("Hello there, stranger!"); // 22 graphemes long
 
         let f = LineFormatter {
             tab_width: 4,
             wrap_type: WrapType::CharWrap(80),
-            maintain_indent: false,
             wrap_additional_indent: 0,
         };
 
@@ -783,8 +801,6 @@ mod tests {
 
         let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
-        f.maintain_indent = false;
-        f.wrap_additional_indent = 0;
         f.set_wrap_width(12);
 
         assert_eq!(
@@ -864,7 +880,6 @@ mod tests {
 
         let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
-        f.maintain_indent = false;
         f.wrap_additional_indent = 0;
         f.set_wrap_width(80);
 
@@ -900,7 +915,6 @@ mod tests {
 
         let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
-        f.maintain_indent = false;
         f.wrap_additional_indent = 0;
         f.set_wrap_width(12);
 
@@ -980,7 +994,6 @@ mod tests {
 
         let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
-        f.maintain_indent = false;
         f.wrap_additional_indent = 0;
         f.set_wrap_width(80);
 
@@ -997,7 +1010,6 @@ mod tests {
 
         let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
-        f.maintain_indent = false;
         f.wrap_additional_indent = 0;
         f.set_wrap_width(12);
 
@@ -1024,7 +1036,6 @@ mod tests {
 
         let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
-        f.maintain_indent = false;
         f.wrap_additional_indent = 0;
         f.set_wrap_width(80);
 
@@ -1059,7 +1070,6 @@ mod tests {
 
         let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
-        f.maintain_indent = false;
         f.wrap_additional_indent = 0;
         f.set_wrap_width(12);
 
@@ -1094,7 +1104,6 @@ mod tests {
 
         let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
-        f.maintain_indent = false;
         f.wrap_additional_indent = 0;
         f.set_wrap_width(80);
 
@@ -1121,7 +1130,6 @@ mod tests {
 
         let mut f = LineFormatter::new(4);
         f.wrap_type = WrapType::CharWrap(0);
-        f.maintain_indent = false;
         f.wrap_additional_indent = 0;
         f.set_wrap_width(12);
 
