@@ -46,7 +46,7 @@ impl LineFormatter {
         LineFormatter {
             tab_width: tab_width,
             wrap_type: WrapType::WordWrap(80),  // a default, really set by set_wrap_width
-            maintain_indent: true,
+            maintain_indent: false,
             wrap_additional_indent: 0,
         }
     }
@@ -293,7 +293,7 @@ impl LineFormatter {
         return self.index_to_v2d(g_iter, col_i_adjusted).1;
     }
 
-    // to iterate over the graphemes
+    // creat iterator to iterate over the graphemes
     // a grapheme cluster is text that should be kept together
     // like a letter and associated accent marks
     pub fn iter<'a, T>(&'a self, g_iter: T) -> LineFormatterVisIter<'a, T>
@@ -302,7 +302,7 @@ impl LineFormatter {
     {
         LineFormatterVisIter::<'a, T> {
             grapheme_iter: g_iter,
-            f: self,
+            f: self,        // interesting, contains access to self
             pos: (0, 0),
             indent: 0,
             indent_found: false,
@@ -329,69 +329,97 @@ pub fn last_block_index(gc: usize) -> usize {
     }
 }
 
-
 // ===================================================================
 // An iterator that iterates over the graphemes in a line in a
-// manner consistent with the ConsoleFormatter.
+// manner consistent with the LineFormatter.
 // note: A grapheme is a sequence of one or more code points that are 
 // displayed as a single, graphical unit that a reader recognizes as 
 // a single element of the writing system. 
+// since it is only for a single line, any line ending will only 
+// occur at the end
+// TODO: should we make a more general iterator after muliple lines?
 // ===================================================================
+// this keeps the state of the particular iteration
 pub struct LineFormatterVisIter<'a, T>
 where
     T: Iterator<Item = RopeSlice<'a>>,
 {
-    grapheme_iter: T,
-    f: &'a LineFormatter,
-    pos: (usize, usize),  // row and column of slice
+    grapheme_iter: T,       // iterates over graphemes on line
+    f: &'a LineFormatter,   // contains state on how to format lines
+    pos: (usize, usize),    // (row,column) of current position, 
+                            // updated to next position right before we return
 
     indent: usize,
     indent_found: bool,
 
-    word_buf: Vec<RopeSlice<'a>>,
-    word_i: usize,
+    word_buf: Vec<RopeSlice<'a>>,   // stores a vector of graphemes for the word
+    word_i: usize,                  // location within the current word that we've returned
 }
 
 impl<'a, T> LineFormatterVisIter<'a, T>
 where
     T: Iterator<Item = RopeSlice<'a>>,
 {
-    fn next_nowrap(&mut self, g: RopeSlice<'a>) -> Option<(RopeSlice<'a>, (usize, usize), usize)> {
-        let width = grapheme_vis_width_at_vis_pos(g, self.pos.1, self.f.tab_width as usize);
+    // returns the values for next grapheme on line in the case of nowrap
+    // so pos is the starting position (row,col) of g, and width is how wide it is
+    fn next_nowrap(
+        &mut self, 
+        g: RopeSlice<'a>
+    ) -> Option<(RopeSlice<'a>, (usize, usize), usize)> {
 
+        // width of grapheme, which handles tabs, line endings, and regular characters
+        let width = grapheme_vis_width_at_vis_pos(g, self.pos.1, self.f.tab_width as usize);
+        // return current position
         let pos = self.pos;
+        // advance to next position by adding width
         self.pos = (self.pos.0, self.pos.1 + width);
         return Some((g, pos, width));
     }
 
+    // returns the values for next grapheme on line in the case of character wrap
     fn next_charwrap(
         &mut self,
         g: RopeSlice<'a>,
         wrap_width: usize,
     ) -> Option<(RopeSlice<'a>, (usize, usize), usize)> {
+
+        // get width
         let width = grapheme_vis_width_at_vis_pos(g, self.pos.1, self.f.tab_width as usize);
 
+        // if starting position of following character is too wide need to wrap
+        // TODO: could a double wide character be clipped in this case
         if (self.pos.1 + width) > wrap_width {
+
             if !self.indent_found {
                 self.indent = 0;
-                self.indent_found = true;
+                // this starts out false, and only can switch to true
+                self.indent_found = true;   
             }
 
             if self.f.maintain_indent {
+                // move current run of whitespace down to the next line????
+                // remember current position to return
                 let pos = (
-                    self.pos.0 + 1,  // single_line_height
+                    // add the indent we've been tracking to additional indent
+                    self.pos.0 + 1,  // single_line_height, move to next row
                     self.indent + self.f.wrap_additional_indent,
                 );
+                // advance to next position by adding width
                 self.pos = (
                     self.pos.0 + 1, // single_line_height
                     self.indent + self.f.wrap_additional_indent + width,
                 );
                 return Some((g, pos, width));
+
             } else {
+                // break any whitespace where we are
+                // remember current position to return
                 let pos = (
-                    self.pos.0 + 1, // single_line_height
-                    self.f.wrap_additional_indent,
+                    // start a new line with just the additional indent for col
+                    self.pos.0 + 1,  // single_line_height
+                    self.f.wrap_additional_indent,  
                 );
+                // advance to next position by adding width
                 self.pos = (
                     self.pos.0 + 1,  // single_line_height
                     self.f.wrap_additional_indent + width,
@@ -399,6 +427,8 @@ where
                 return Some((g, pos, width));
             }
         } else {
+
+            // don't wrap
             if !self.indent_found {
                 if rope_slice_is_whitespace(&g) {
                     self.indent += width;
@@ -407,21 +437,25 @@ where
                 }
             }
 
+            // normal return stuff
             let pos = self.pos;
             self.pos = (self.pos.0, self.pos.1 + width);
             return Some((g, pos, width));
         }
     }
+
 }
 
 impl<'a, T> Iterator for LineFormatterVisIter<'a, T>
 where
     T: Iterator<Item = RopeSlice<'a>>,
 {
+    // (grapheme, (row,col), width)
     type Item = (RopeSlice<'a>, (usize, usize), usize);
 
     fn next(&mut self) -> Option<(RopeSlice<'a>, (usize, usize), usize)> {
         match self.f.wrap_type {
+
             WrapType::NoWrap => {
                 if let Some(g) = self.grapheme_iter.next() {
                     return self.next_nowrap(g);
@@ -497,19 +531,21 @@ where
 }
 
 // ===================================================================
-// Helper functions
+// Helper function
 // ===================================================================
 
 /// Returns the visual width of a grapheme given a starting
-/// position on a line.
+/// displayed column on a line.
+/// Need pos and tab_width only in the case of a tab
 fn grapheme_vis_width_at_vis_pos(g: RopeSlice, pos: usize, tab_width: usize) -> usize {
     if g == "\t" {
+        // put next character on next multiple of tab_width
         let ending_pos = ((pos / tab_width) + 1) * tab_width;
         return ending_pos - pos;  // width is how far we went
     } else if rope_slice_is_line_ending(&g) {
-        return 1;
+        return 1; // line endings are a single character width, even if multiple chars
     } else {
-        return grapheme_width(&g);
+        return grapheme_width(&g); // otherwise just the width of the grapheme, which is usually 0, 1, or 2
     }
 }
 
