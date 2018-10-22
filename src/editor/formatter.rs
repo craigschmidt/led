@@ -346,7 +346,7 @@ where
                             // updated to next position right before we return
 
     word_buf: Vec<RopeSlice<'a>>,   // stores a vector of graphemes for the word
-    word_i: usize,                  // location within the current word that we've returned
+    word_i: usize,                  // next location within word_buf to use
 }
 
 impl<'a, T> LineFormatterVisIter<'a, T>
@@ -370,6 +370,7 @@ where
     }
 
     // returns the values for next grapheme on line in the case of character wrap
+    // also used by word wrap
     fn next_charwrap(
         &mut self,
         g: RopeSlice<'a>,
@@ -435,6 +436,7 @@ where
 
             WrapType::WordWrap(wrap_width) => {
                 // Get next word if necessary
+                // includes one whitespace on end
                 if self.word_i >= self.word_buf.len() {
                     let mut word_width = 0;   // total width of all word graphemes
                     self.word_buf.truncate(0);
@@ -442,7 +444,7 @@ where
                         self.word_buf.push(g);
                         let width = grapheme_vis_width_at_vis_pos(
                             g,
-                            self.pos.1 + word_width,
+                            self.pos.1 + word_width, // on next line
                             self.f.tab_width as usize,
                         );
                         word_width += width;
@@ -451,7 +453,7 @@ where
                         }
                     }
 
-                    // no word left
+                    // no word left, so we're done
                     if self.word_buf.len() == 0 {
                         return None;
                     }
@@ -466,9 +468,10 @@ where
                         }
                     }
 
+                    // haven't used up any graphemes from word yet
                     self.word_i = 0;
                 }
-                // have someething in word_buf to read here
+                // have someething left in word_buf to read here
 
                 // Iterate over the word
                 let g = self.word_buf[self.word_i];
