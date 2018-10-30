@@ -1,4 +1,4 @@
-use std::cmp::{min,max};
+use std::cmp::max;
 
 // TODO: look at these first
 use ropey::RopeSlice;
@@ -19,14 +19,6 @@ pub enum WrapType {
 // could slow down the editor arbitrarily for arbitrarily long
 // lines.
 pub const LINE_BLOCK_LENGTH: usize = 1 << 12;  // 4096 i.e. 2^12
-
-#[allow(dead_code)] // haven't implemented Ceiling
-#[derive(Copy, Clone, PartialEq)]
-pub enum RoundingBehavior {
-    Round,
-    Floor,
-    Ceiling,
-}
 
 // ===================================================================
 // LineFormatter implementation for terminals/consoles.
@@ -74,8 +66,7 @@ impl LineFormatter {
         let mut maxheight = 0;
         let mut maxwidth = 0;
 
-        for (_g, pos, width) in self.iter(g_iter) {
-
+        for (_g, pos, width, _char_offset) in self.iter(g_iter) {
             maxheight = max(maxheight, pos.0);        // max row
             maxwidth = max(maxwidth, pos.1 + width);  // max col + width
         }
@@ -83,35 +74,38 @@ impl LineFormatter {
         // we have the max row and col + width
         // to convert to a height we need +=1
         // the width doesn't need that because of the width
-        // TODO: is this valid for multiwidth at end
         maxheight += 1; // was single_line_height
 
         return (maxheight,maxwidth);
     }
 
-    /// Converts a char index within a text into a visual 2d position.
+    /// Converts a char index within a text into a visual 2d position (row,col).
     /// The text to be formatted is passed as a grapheme iterator.
+    /// return the (row,col) of pos
+    //  if char_idx is out of range, then returns one position beyond end
     pub fn index_to_v2d<'a, T>(&'a self, g_iter: T, char_idx: usize) -> (usize, usize)
     where
         T: Iterator<Item = RopeSlice<'a>>,
     {
-        let mut pos = (0, 0);
-        let mut i = 0;
-        let mut last_width = 0;
+        // initialize values so still in scope at end
+        let mut pos : (usize,usize) = (0,0);
+        let mut width : usize = 0;
 
-        for (g, _pos, width) in self.iter(g_iter) {
-            pos = _pos;
-            last_width = width;
-            i += g.chars().count();
-
-            if i > char_idx {
+        // find the pos for the corresponding char_offset
+        for (_g, _pos, _width, char_offset) in self.iter(g_iter) {
+            pos = _pos;     
+            width = _width;
+            // should really be ==
+            if char_offset >= char_idx {
                 return pos;
             }
         }
 
-        return (pos.0, pos.1 + last_width);
+        // hit the end
+        return (pos.0, pos.1 + width);
     }
 
+    //  TODO: This seems slow
     /// Takes a char index and a visual vertical offset, and returns the char
     /// index after that visual offset is applied.
     pub fn index_offset_vertical_v2d(
@@ -119,73 +113,53 @@ impl LineFormatter {
         buf: &Buffer,
         char_idx: usize,
         offset: isize,
-        rounding: (RoundingBehavior, RoundingBehavior),
     ) -> usize {
         // TODO: handle rounding modes
         // TODO: do this with bidirectional line iterator
 
         // Get the line and block index of the given index
-        let (mut line_i, mut col_i) = buf.index_to_line_col(char_idx);
+        let (mut line_i, col_i) = buf.index_to_line_col(char_idx);
 
         // Find the right block in the line, and the index within that block
-        let (line_block, col_i_adjusted) = block_index_and_offset(col_i);
+        // let (line_block, col_i_adjusted) = block_index_and_offset(col_i);
 
         let mut line = buf.get_line(line_i);
+
         let (mut y, x) = self.index_to_v2d(
-            RopeGraphemes::new(&line.slice(
-                (line_block * LINE_BLOCK_LENGTH)
-                    ..min(line.len_chars(), (line_block + 1) * LINE_BLOCK_LENGTH),
-            )),
-            col_i_adjusted,
+            RopeGraphemes::new(&line.slice(..)),
+            col_i
         );
 
         // First, find the right line while keeping track of the vertical offset
         let mut new_y = y as isize + offset;
 
-        let mut block_index: usize = line_block;
         loop {
             line = buf.get_line(line_i);
-            let (h, _) = self.dimensions(RopeGraphemes::new(&line.slice(
-                (block_index * LINE_BLOCK_LENGTH)
-                    ..min(line.len_chars(), (block_index + 1) * LINE_BLOCK_LENGTH),
-            )));
+            let (h, _) = self.dimensions(RopeGraphemes::new(&line.slice(..)));
 
             if new_y >= 0 && new_y < h as isize {
                 y = new_y as usize;
                 break;
             } else {
                 if new_y > 0 {
-                    let is_last_block = block_index >= last_block_index(line.len_chars());
 
                     // Check for off-the-end
-                    if is_last_block && (line_i + 1) >= buf.line_count() {
+                    if (line_i + 1) >= buf.line_count() {
                         return buf.char_count();
                     }
-
-                    if is_last_block {
                     line_i += 1;
-                        block_index = 0;
-                    } else {
-                        block_index += 1;
-                    }
                     new_y -= h as isize;
+
                 } else if new_y < 0 {
+                    
                     // Check for off-the-end
-                    if block_index == 0 && line_i == 0 {
+                    if line_i == 0 {
                         return 0;
                     }
 
-                    if block_index == 0 {
                     line_i -= 1;
                     line = buf.get_line(line_i);
-                        block_index = last_block_index(line.len_chars());
-                    } else {
-                        block_index -= 1;
-                    }
-                    let (h, _) = self.dimensions(RopeGraphemes::new(&line.slice(
-                        (block_index * LINE_BLOCK_LENGTH)
-                            ..min(line.len_chars(), (block_index + 1) * LINE_BLOCK_LENGTH),
-                    )));
+                    let (h, _) = self.dimensions(RopeGraphemes::new(&line.slice(..)));
                     new_y += h as isize;
                 } else {
                     unreachable!();
@@ -195,100 +169,102 @@ impl LineFormatter {
 
         // Next, convert the resulting coordinates back into buffer-wide
         // coordinates.
-        let block_slice = line.slice(
-            (block_index * LINE_BLOCK_LENGTH)
-                ..min(line.len_chars(), (block_index + 1) * LINE_BLOCK_LENGTH),
-        );
-        let block_col_i = min(
-            self.v2d_to_index(RopeGraphemes::new(&block_slice), (y, x), rounding),
-            LINE_BLOCK_LENGTH - 1,
-        );
-        col_i = (block_index * LINE_BLOCK_LENGTH) + block_col_i;
+        let col_i = self.v2d_to_index(RopeGraphemes::new(&line.slice(..)), (y, x));
 
         return buf.line_col_to_index((line_i, col_i));
     }
 
     /// Takes a char index and a desired visual horizontal position, and
-    /// returns a char index on the same visual line as the given index,
+    /// returns an overall char_idx on the same visual line as the given index,
     /// but offset to have the desired horizontal position.
     pub fn index_set_horizontal_v2d(
         &self,
         buf: &Buffer,
         char_idx: usize,
-        horizontal: usize,
-        rounding: RoundingBehavior,
+        horizontal: usize
     ) -> usize {
-        let (line_i, col_i) = buf.index_to_line_col(char_idx);
+
+        let (line_i, char_offset) = buf.index_to_line_col(char_idx);
         let line = buf.get_line(line_i);
 
-        // Find the right block in the line, and the index within that block
-        let (line_block, col_i_adjusted) = block_index_and_offset(col_i);
-        let start_index = line_block * LINE_BLOCK_LENGTH;
-        let end_index = min(line.len_chars(), start_index + LINE_BLOCK_LENGTH);
-
         // Calculate the horizontal position
-        let (v, _) = self.index_to_v2d(
-            RopeGraphemes::new(&line.slice(start_index..end_index)),
-            col_i_adjusted,
+        // first find the visual row at char_offset
+        let (row, _) = self.index_to_v2d(
+            RopeGraphemes::new(&line.slice(..)),
+            char_offset
         );
-        let block_col_i = self.v2d_to_index(
-            RopeGraphemes::new(&line.slice(start_index..end_index)),
-            (v, horizontal),
-            (RoundingBehavior::Floor, rounding),
+        // and then look up the char_offset at the desired (row,horizontal)
+        // within the line
+        let mut new_char_offset = self.v2d_to_index(
+            RopeGraphemes::new(&line.slice(..)),
+            (row, horizontal),
         );
-        let mut new_col_i = start_index + min(block_col_i, LINE_BLOCK_LENGTH - 1);
 
         // Make sure we're not pushing the index off the end of the line
-        if (line_i + 1) < buf.line_count() && new_col_i >= line.len_chars() && line.len_chars() > 0
+        // if horizontal is too far
+        if (line_i + 1) < buf.line_count() && new_char_offset >= line.len_chars() && line.len_chars() > 0
         {
-            new_col_i = line.len_chars() - 1;
+            // clip to last valid character on line
+            new_char_offset = line.len_chars() - 1;
         }
 
-        return (char_idx + new_col_i) - col_i;
+        // convert back to a global char_idx
+        // new_char_offset - char_offset is the delta on the visual line
+        // weird, so the () are necessary to not have underflow in temporary computations
+        // in the case we end up at 0, which is a valid usize
+        // (8 + 0) - 8 is ok
+        // 8 + (0 - 8) underflows on the temporary calculations
+        return (char_idx + new_char_offset) - char_offset;
     }
 
-    /// Converts a visual 2d position into a char index within a text.
+    /// Converts a visual 2d position into a char_offset within a text.
     /// The text to be formatted is passed as a grapheme iterator.
+    /// if value doesn't exist, then return value right before
+    /// if beyond the end then return one beyond the end
     fn v2d_to_index<'a, T>(
         &'a self,
         g_iter: T,
         v2d: (usize, usize),
-        _ : (RoundingBehavior, RoundingBehavior),
     ) -> usize
     where
         T: Iterator<Item = RopeSlice<'a>>,
     {
-        // TODO: handle rounding modes
-        let mut prev_i = 0;
-        let mut i = 0;
+        let mut char_offset = 0;
+        let mut prev_char_offset = 0;
+        let mut last_char_cnt = 0;
 
-        for (g, pos, _) in self.iter(g_iter) {
-            if pos.0 > v2d.0 {
-                i = prev_i;
-                break;
-            } else if pos.0 == v2d.0 && pos.1 >= v2d.1 {
-                break;
+        for (g, pos, _, _char_offset) in self.iter(g_iter) {
+            char_offset = _char_offset;
+
+            // are at or beyond our position
+            // found it 
+            if pos == v2d {
+                return char_offset;
+            } else if (pos.0 > v2d.0) || (pos.0 == v2d.0 && pos.1 >= v2d.1) { 
+                // beyond what we're looking for, so return previous value
+                return prev_char_offset;
             }
 
-            prev_i = i;
-            i += g.chars().count();
+            // in case we drop off the end 
+            last_char_cnt = g.chars().count();
+            // save in case we have to back up
+            prev_char_offset = char_offset;
         }
 
-        return i;
+        // character after last in iterator
+        return char_offset + last_char_cnt;
     }
     
+    /// given on overall char_idx in the buffer, find the col in the 2d (row,col)
+    /// position on the line containing char_idx
     pub fn index_to_horizontal_v2d(&self, buf: &Buffer, char_idx: usize) -> usize {
+
+        // get the line index and char_idx offset of the overall char_idx
         let (line_i, col_i) = buf.index_to_line_col(char_idx);
         let line = buf.get_line(line_i);
 
-        // Find the right block in the line, and the index within that block
-        let (line_block, col_i_adjusted) = block_index_and_offset(col_i);
-
-        // Get an iter into the right block
-        let a = line_block * LINE_BLOCK_LENGTH;
-        let b = min(line.len_chars(), (line_block + 1) * LINE_BLOCK_LENGTH);
-        let g_iter = RopeGraphemes::new(&line.slice(a..b));
-        return self.index_to_v2d(g_iter, col_i_adjusted).1;
+        let g_iter = RopeGraphemes::new(&line.slice(..));
+        return self.index_to_v2d(g_iter, col_i).1;
     }
 
     // creat iterator to iterate over the graphemes
@@ -302,28 +278,13 @@ impl LineFormatter {
             grapheme_iter: g_iter,
             f: self,        // interesting, contains access to self
             pos: (0, 0),
+            char_offset: 0,
             word_buf: Vec::new(),
             word_i: 0,
         }
     }
 }
 
-pub fn block_index_and_offset(index: usize) -> (usize, usize) {
-    (index / LINE_BLOCK_LENGTH, index % LINE_BLOCK_LENGTH)
-}
-
-pub fn last_block_index(gc: usize) -> usize {
-    let mut block_count = gc / LINE_BLOCK_LENGTH;
-    if (gc % LINE_BLOCK_LENGTH) > 0 {
-        block_count += 1;
-    }
-
-    if block_count > 0 {
-        return block_count - 1;
-    } else {
-        return 0;
-    }
-}
 
 // ===================================================================
 // An iterator that iterates over the graphemes in a line in a
@@ -344,6 +305,9 @@ where
     f: &'a LineFormatter,   // contains state on how to format lines
     pos: (usize, usize),    // (row,column) of current position, 
                             // updated to next position right before we return
+    char_offset : usize,    // offset from first char_idx, so 0 for first grapheme
+                            // updated to next position right before we return
+                            // note that a graheme may contain various numbers of characters
 
     word_buf: Vec<RopeSlice<'a>>,   // stores a vector of graphemes for the word
     word_i: usize,                  // next location within word_buf to use
@@ -358,15 +322,23 @@ where
     fn next_nowrap(
         &mut self, 
         g: RopeSlice<'a>
-    ) -> Option<(RopeSlice<'a>, (usize, usize), usize)> {
+    ) -> Option<(RopeSlice<'a>, (usize, usize), usize, usize)> {
 
         // width of grapheme, which handles tabs, line endings, and regular characters
         let width = grapheme_vis_width_at_vis_pos(g, self.pos.1, self.f.tab_width as usize);
-        // return current position
+        // number of characters
+        let char_cnt = g.chars().count();
+
+        // save current char_offset and positions to return
         let pos = self.pos;
+        let char_offset = self.char_offset;
+
         // advance to next position by adding width
         self.pos = (self.pos.0, self.pos.1 + width);
-        return Some((g, pos, width));
+        // and next char_offset by adding char_cnt
+        self.char_offset += char_cnt;
+
+        return Some((g, pos, width, char_offset));
     }
 
     // returns the values for next grapheme on line in the case of character wrap
@@ -375,10 +347,16 @@ where
         &mut self,
         g: RopeSlice<'a>,
         wrap_width: usize,
-    ) -> Option<(RopeSlice<'a>, (usize, usize), usize)> {
+    ) -> Option<(RopeSlice<'a>, (usize, usize), usize, usize)> {
 
         // get width
         let width = grapheme_vis_width_at_vis_pos(g, self.pos.1, self.f.tab_width as usize);
+        // number of characters
+        let char_cnt = g.chars().count();
+        // save char_offset to return
+        let char_offset = self.char_offset;
+        // update char_offset by adding char_cnt
+        self.char_offset += char_cnt;
 
         // if starting position of following character is too wide need to wrap
         if (self.pos.1 + width) > wrap_width {
@@ -393,8 +371,8 @@ where
                 self.pos.0 + 1,  // single_line_height
                 self.f.wrap_additional_indent + width,
             );
-            return Some((g, pos, width));
 
+            return Some((g, pos, width, char_offset));
         } else {
 
             // normal return stuff
@@ -402,10 +380,10 @@ where
             let pos = self.pos;
             // advance to next position by adding width
             self.pos = (self.pos.0, self.pos.1 + width);
-            return Some((g, pos, width));
+    
+            return Some((g, pos, width, char_offset));
         }
     }
-
 }
 
 impl<'a, T> Iterator for LineFormatterVisIter<'a, T>
@@ -413,9 +391,9 @@ where
     T: Iterator<Item = RopeSlice<'a>>,
 {
     // (grapheme, (row,col), width)
-    type Item = (RopeSlice<'a>, (usize, usize), usize);
+    type Item = (RopeSlice<'a>, (usize, usize), usize, usize);
 
-    fn next(&mut self) -> Option<(RopeSlice<'a>, (usize, usize), usize)> {
+    fn next(&mut self) -> Option<(RopeSlice<'a>, (usize, usize), usize, usize)> {
         match self.f.wrap_type {
 
             WrapType::NoWrap => {
@@ -487,7 +465,7 @@ where
 // ===================================================================
 
 /// Returns the visual width of a grapheme given a starting
-/// displayed column on a line.
+/// displayed column pos on a line.
 /// Need pos and tab_width only in the case of a tab
 fn grapheme_vis_width_at_vis_pos(g: RopeSlice, pos: usize, tab_width: usize) -> usize {
     if g == "\t" {
@@ -507,7 +485,7 @@ mod tests {
     use super::*;
     use editor::buffer::Buffer;
     // TODO: test Ceiling, Round
-    use self::RoundingBehavior::{Floor};
+    // use self::RoundingBehavior::{Floor};
     use self::LineFormatter;
     use ropey::Rope;
     use utils::RopeGraphemes;
@@ -657,11 +635,11 @@ mod tests {
             wrap_additional_indent : 0,
         };
 
-        // this prints out the solution with word wraps
-        let g_iter = RopeGraphemes::new(&text.slice(..));
-        for (g, pos, width) in f.iter(g_iter) {
-            println!("{},{:?},{}", g, pos, width);
-        }
+        // // this prints out the solution with word wraps
+        // let g_iter = RopeGraphemes::new(&text.slice(..));
+        // for (g, pos, width, char_offset) in f.iter(g_iter) {
+        //     println!("{},{:?},{},{}", g, pos, width, char_offset);
+        // }
 
         // note that dimensions could potentially give less than WordWrap width
         assert_eq!(f.dimensions(RopeGraphemes::new(&text.slice(..))), (6, 12));
@@ -780,101 +758,61 @@ mod tests {
             wrap_additional_indent: 0,
         };
 
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 0),
-            (0, 0)
-        );
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 5),
-            (0, 5)
-        );
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 22),
-            (0, 22)
-        );
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 23),
-            (0, 22)
-        );
+        // note: each call consumes the grapheme iterator
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 0),(0, 0));
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 5),(0, 5));
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 21),(0, 21));
+        // beyond end get one beyone end
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 22),(0, 22));
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 23),(0, 22));  
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 1000),(0, 22));
     }
 
     #[test]
     fn index_to_v2d_2() {
-        let text = Rope::from_str("Hello there, stranger!  How are you doing this fine day?"); // 56 graphemes long
+                                 // cols 0 to 11 are valid
+                                 //012345678901
+        let text = Rope::from_str("Hello there,\
+                                    stranger!  \
+                                   How are you \
+                                   doing this f\
+                                   ine day?"); // 56 graphemes long
 
-        let mut f = LineFormatter::new(4);
-        f.wrap_type = WrapType::CharWrap(0);
-        f.set_wrap_width(12);
+       let f = LineFormatter {
+            tab_width: 4,
+            wrap_type: WrapType::CharWrap(12),
+            wrap_additional_indent: 0,
+        };
 
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 0),
-            (0, 0)
-        );
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 5),
-            (0, 5)
-        );
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 11),
-            (0, 11)
-        );
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 0),(0, 0));
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 5),(0, 5));
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 11),(0, 11));
 
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 12),
-            (1, 0)
-        );
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 15),
-            (1, 3)
-        );
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 23),
-            (1, 11)
-        );
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 12),(1, 0));
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 15),(1, 3));
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 23),(1, 11));
 
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 24),
-            (2, 0)
-        );
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 28),
-            (2, 4)
-        );
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 35),
-            (2, 11)
-        );
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 24),(2, 0));
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 28),(2, 4));
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 35),(2, 11));
 
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 36),
-            (3, 0)
-        );
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 43),
-            (3, 7)
-        );
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 47),
-            (3, 11)
-        );
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 36),(3, 0));
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 43),(3, 7));
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 47),(3, 11));
 
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 48),
-            (4, 0)
-        );
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 50),
-            (4, 2)
-        );
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 56),
-            (4, 8)
-        );
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 48),(4, 0)); // i
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 49),(4, 1)); // n
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 50),(4, 2)); // e
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 51),(4, 3)); //  
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 52),(4, 4)); // d 
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 53),(4, 5)); // a
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 54),(4, 6)); // y
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 55),(4, 7)); // ?
 
-        assert_eq!(
-            f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 57),
-            (4, 8)
-        );
+        // here beyond the end gives you last valid value
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 56),(4, 7)); // beyond gets last
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 57),(4, 7));
+        assert_eq!(f.index_to_v2d(RopeGraphemes::new(&text.slice(..)), 1000),(4, 7));
     }
 
     #[test]
@@ -886,109 +824,49 @@ mod tests {
         f.wrap_additional_indent = 0;
         f.set_wrap_width(80);
 
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (0, 0), (Floor, Floor)),
-            0
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (0, 5), (Floor, Floor)),
-            5
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (0, 22), (Floor, Floor)),
-            22
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (0, 23), (Floor, Floor)),
-            22
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (1, 0), (Floor, Floor)),
-            22
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (1, 1), (Floor, Floor)),
-            22
-        );
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (0, 0)),0);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (0, 5)),5);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (0, 22)),22);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (0, 23)),22);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (1, 0)),22);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (1, 1)),22);
     }
 
     #[test]
     fn v2d_to_index_2() {
         let text = Rope::from_str("Hello there, stranger!  How are you doing this fine day?"); // 56 graphemes long
 
-        let mut f = LineFormatter::new(4);
-        f.wrap_type = WrapType::CharWrap(0);
-        f.wrap_additional_indent = 0;
-        f.set_wrap_width(12);
+       let f = LineFormatter {
+            tab_width: 4,
+            wrap_type: WrapType::CharWrap(12),
+            wrap_additional_indent: 0,
+        };
 
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (0, 0), (Floor, Floor)),
-            0
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (0, 11), (Floor, Floor)),
-            11
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (0, 12), (Floor, Floor)),
-            11
-        );
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (0, 0)),0);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (0, 11)),11);
+        // if col is beyond the end of the row, return previous valid index
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (0, 12)),11);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (0, 1000)),11);
 
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (1, 0), (Floor, Floor)),
-            12
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (1, 11), (Floor, Floor)),
-            23
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (1, 12), (Floor, Floor)),
-            23
-        );
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (1, 0)),12);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (1, 11)),23);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (1, 12)),23);
 
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (2, 0), (Floor, Floor)),
-            24
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (2, 11), (Floor, Floor)),
-            35
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (2, 12), (Floor, Floor)),
-            35
-        );
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (2, 0)),24);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (2, 11)),35);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (2, 12)),35);
 
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (3, 0), (Floor, Floor)),
-            36
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (3, 11), (Floor, Floor)),
-            47
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (3, 12), (Floor, Floor)),
-            47
-        );
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (3, 0)),36);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (3, 11)),47);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (3, 12)),47);
 
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (4, 0), (Floor, Floor)),
-            48
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (4, 7), (Floor, Floor)),
-            55
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (4, 8), (Floor, Floor)),
-            56
-        );
-        assert_eq!(
-            f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (4, 9), (Floor, Floor)),
-            56
-        );
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (4, 0)),48);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (4, 7)),55); // last valid index
+         
+        // beyond end get one beyond last valid index
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (4, 8)),56);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (4, 9)),56);
+        assert_eq!(f.v2d_to_index(RopeGraphemes::new(&text.slice(..)), (1000, 1000)),56);
     }
 
     #[test]
@@ -1042,29 +920,29 @@ mod tests {
         f.wrap_additional_indent = 0;
         f.set_wrap_width(80);
 
-        assert_eq!(f.index_set_horizontal_v2d(&b, 0, 0, Floor), 0);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 0, 22, Floor), 22);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 0, 23, Floor), 22);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 0, 0), 0);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 0, 22), 22);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 0, 23), 22);
 
-        assert_eq!(f.index_set_horizontal_v2d(&b, 8, 0, Floor), 0);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 8, 22, Floor), 22);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 8, 23, Floor), 22);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 8, 0), 0);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 8, 22), 22);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 8, 23), 22);
 
-        assert_eq!(f.index_set_horizontal_v2d(&b, 22, 0, Floor), 0);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 22, 22, Floor), 22);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 22, 23, Floor), 22);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 22, 0), 0);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 22, 22), 22);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 22, 23), 22);
 
-        assert_eq!(f.index_set_horizontal_v2d(&b, 23, 0, Floor), 23);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 23, 32, Floor), 55);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 23, 33, Floor), 55);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 23, 0), 23);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 23, 32), 55);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 23, 33), 55);
 
-        assert_eq!(f.index_set_horizontal_v2d(&b, 28, 0, Floor), 23);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 28, 32, Floor), 55);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 28, 33, Floor), 55);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 28, 0), 23);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 28, 32), 55);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 28, 33), 55);
 
-        assert_eq!(f.index_set_horizontal_v2d(&b, 55, 0, Floor), 23);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 55, 32, Floor), 55);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 55, 33, Floor), 55);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 55, 0), 23);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 55, 32), 55);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 55, 33), 55);
     }
 
     #[test]
@@ -1076,29 +954,30 @@ mod tests {
         f.wrap_additional_indent = 0;
         f.set_wrap_width(12);
 
-        assert_eq!(f.index_set_horizontal_v2d(&b, 0, 0, Floor), 0);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 0, 11, Floor), 11);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 0, 12, Floor), 11);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 0, 0), 0);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 0, 11), 11);
+        // if col is beyond length of col, then return last valid value
+        assert_eq!(f.index_set_horizontal_v2d(&b, 0, 12), 11);
 
-        assert_eq!(f.index_set_horizontal_v2d(&b, 8, 0, Floor), 0);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 8, 11, Floor), 11);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 8, 12, Floor), 11);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 8, 0), 0);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 8, 11), 11);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 8, 12), 11);
 
-        assert_eq!(f.index_set_horizontal_v2d(&b, 11, 0, Floor), 0);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 11, 11, Floor), 11);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 11, 12, Floor), 11);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 11, 0), 0);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 11, 11), 11);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 11, 12), 11);
 
-        assert_eq!(f.index_set_horizontal_v2d(&b, 12, 0, Floor), 12);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 12, 11, Floor), 23);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 12, 12, Floor), 23);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 12, 0), 12);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 12, 11), 23);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 12, 12), 23);
 
-        assert_eq!(f.index_set_horizontal_v2d(&b, 17, 0, Floor), 12);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 17, 11, Floor), 23);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 17, 12, Floor), 23);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 17, 0), 12);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 17, 11), 23);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 17, 12), 23);
 
-        assert_eq!(f.index_set_horizontal_v2d(&b, 23, 0, Floor), 12);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 23, 11, Floor), 23);
-        assert_eq!(f.index_set_horizontal_v2d(&b, 23, 12, Floor), 23);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 23, 0), 12);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 23, 11), 23);
+        assert_eq!(f.index_set_horizontal_v2d(&b, 23, 12), 23);
     }
 
     #[test]
@@ -1110,21 +989,21 @@ mod tests {
         f.wrap_additional_indent = 0;
         f.set_wrap_width(80);
 
-        assert_eq!(f.index_offset_vertical_v2d(&b, 0, 0, (Floor, Floor)), 0);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 0, 1, (Floor, Floor)), 23);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 23, -1, (Floor, Floor)), 0);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 0, 0), 0);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 0, 1), 23);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 23, -1), 0);
 
-        assert_eq!(f.index_offset_vertical_v2d(&b, 2, 0, (Floor, Floor)), 2);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 2, 1, (Floor, Floor)), 25);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 25, -1, (Floor, Floor)), 2);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 2, 0), 2);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 2, 1), 25);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 25, -1), 2);
 
-        assert_eq!(f.index_offset_vertical_v2d(&b, 22, 0, (Floor, Floor)), 22);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 22, 1, (Floor, Floor)), 45);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 45, -1, (Floor, Floor)), 22);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 22, 0), 22);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 22, 1), 45);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 45, -1), 22);
 
-        assert_eq!(f.index_offset_vertical_v2d(&b, 54, 0, (Floor, Floor)), 54);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 54, 1, (Floor, Floor)), 55);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 54, -1, (Floor, Floor)), 22);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 54, 0), 54);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 54, 1), 55);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 54, -1), 22);
     }
 
     #[test]
@@ -1136,28 +1015,28 @@ mod tests {
         f.wrap_additional_indent = 0;
         f.set_wrap_width(12);
 
-        assert_eq!(f.index_offset_vertical_v2d(&b, 0, 0, (Floor, Floor)), 0);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 0, 1, (Floor, Floor)), 12);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 0, 2, (Floor, Floor)), 24);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 0, 0), 0);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 0, 1), 12);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 0, 2), 24);
 
-        assert_eq!(f.index_offset_vertical_v2d(&b, 0, 0, (Floor, Floor)), 0);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 12, -1, (Floor, Floor)), 0);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 24, -2, (Floor, Floor)), 0);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 0, 0), 0);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 12, -1), 0);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 24, -2), 0);
 
-        assert_eq!(f.index_offset_vertical_v2d(&b, 4, 0, (Floor, Floor)), 4);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 4, 1, (Floor, Floor)), 16);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 4, 2, (Floor, Floor)), 28);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 4, 0), 4);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 4, 1), 16);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 4, 2), 28);
 
-        assert_eq!(f.index_offset_vertical_v2d(&b, 4, 0, (Floor, Floor)), 4);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 16, -1, (Floor, Floor)), 4);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 28, -2, (Floor, Floor)), 4);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 4, 0), 4);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 16, -1), 4);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 28, -2), 4);
 
-        assert_eq!(f.index_offset_vertical_v2d(&b, 11, 0, (Floor, Floor)), 11);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 11, 1, (Floor, Floor)), 23);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 11, 2, (Floor, Floor)), 35);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 11, 0), 11);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 11, 1), 23);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 11, 2), 35);
 
-        assert_eq!(f.index_offset_vertical_v2d(&b, 11, 0, (Floor, Floor)), 11);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 23, -1, (Floor, Floor)), 11);
-        assert_eq!(f.index_offset_vertical_v2d(&b, 35, -2, (Floor, Floor)), 11);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 11, 0), 11);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 23, -1), 11);
+        assert_eq!(f.index_offset_vertical_v2d(&b, 35, -2), 11);
     }
 }

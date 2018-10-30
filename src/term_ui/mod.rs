@@ -359,16 +359,11 @@ impl TermUI {
         let (line_index, col_i) = editor.index_to_line_col_view_pos_row();  
         debug!("line_index:{}, col_i:{}", line_index, col_i);  // 0, 0
                 
-        // plain function, not method
-        let (mut line_block_index, _huh) = Editor::block_index_and_offset(col_i);
-        debug!("line_block_index:{}, _huh:{}", line_block_index, _huh); // 0, 0
-
-        let mut char_index = editor.line_col_to_index(line_index, line_block_index);
+        // get start character of line
+        let mut char_index = editor.line_col_to_index(line_index, 0);
         debug!("char_index:{}", char_index);  // 0 
                 
-        let vis_line_offset = editor.calc_vis_line_offset(line_index, 
-                                                          line_block_index, 
-                                                          char_index);
+        let vis_line_offset = editor.calc_vis_line_offset(line_index, char_index);
                 
         debug!("vis_line_offset:{}", vis_line_offset);  // 0 
 
@@ -396,10 +391,8 @@ impl TermUI {
         for line in editor.line_iter_at_index(line_index) {
             // Print line number
 
-            if line_block_index == 0 {
-
-                // let dc = digit_count(line_num as u32, 10);
-                debug!("{:?},{},{}", line, line.len_bytes(), line.len_chars());
+             // let dc = digit_count(line_num as u32, 10);
+            debug!("{:?},{},{}", line, line.len_bytes(), line.len_chars());
             // gutter width is supposed to have one extra space at end, 
             // so gutter_width -1 gives max width of digit_count
             let lnx = c1.1 + (gutter_width - 1 - digit_count(line_num));
@@ -412,8 +405,7 @@ impl TermUI {
                     Style(Color::White, Color::Blue),
                 );
             }
-            }
-
+ 
             // Loop through the graphemes of the line and print them to
             // the screen.
             let mut line_g_index: usize = 0;
@@ -423,12 +415,12 @@ impl TermUI {
             // with wrapped lines, this shows how many lines of screen the current line is using
             let mut lines_traversed: usize = 0;
             
-            let mut g_iter = editor.vis_iter(line_block_index, &line);
+            let mut g_iter = editor.vis_iter(&line);
             loop {
                 // pos_y is the 0 based row of just the wrapped line by itself
                 // pos_x is the 0 based column of just the wrapped line by itself
                 // so if a line takes 3 rows to display, pos_y is 0,1,or 2
-                if let Some((g, (pos_y, pos_x), width)) = g_iter.next() {
+                if let Some((g, (pos_y, pos_x), width, _char_offset)) = g_iter.next() {
                   
                     let mut g_to_print = g.to_string();
                     // escape tabs and \n
@@ -439,8 +431,8 @@ impl TermUI {
                     if g_to_print == "\t".to_string() {
                         g_to_print = "TAB".to_string();
                     }
-                    debug!("start: {}, pos_y:{}, pos_x:{}, width:{}, line_g_index:{}, last_pos_y:{}, lines_traversed:{}, line_block_index:{}", 
-                    g_to_print, pos_y, pos_x, width, line_g_index, last_pos_y, lines_traversed, line_block_index);
+                    debug!("start: {}, pos_y:{}, pos_x:{}, width:{}, line_g_index:{}, last_pos_y:{}, lines_traversed:{}", 
+                    g_to_print, pos_y, pos_x, width, line_g_index, last_pos_y, lines_traversed);
 
                     // this is true when have a wrapped line
                     if last_pos_y != pos_y {
@@ -497,19 +489,8 @@ impl TermUI {
                 } else {
                     break;
                 }
-
-                // force a new line if this one is too long
-                if editor.line_beyond_block_length(line_g_index) {
-                    line_block_index += 1;
-                    line_g_index = 0;
-                                        
-                    // get a new iterator
-                    g_iter = editor.vis_iter(line_block_index, &line);
-                    lines_traversed += 1;
-                }
             }
 
-            line_block_index = 0;
             screen_line += lines_traversed + 1;
             line_num += 1;
         }

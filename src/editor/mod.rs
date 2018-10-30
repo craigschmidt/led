@@ -4,9 +4,7 @@ use self::cursor::CursorSet;
 use self::buffer::Buffer;
 use self::formatter::LineFormatter;
 use self::formatter::LineFormatterVisIter;
-use self::formatter::RoundingBehavior::*;
 use self::formatter::LINE_BLOCK_LENGTH;
-use self::formatter::block_index_and_offset;
 use ropey::{RopeSlice,iter};
 use std::cmp::{max, min};
 use std::path::{Path, PathBuf};
@@ -330,16 +328,15 @@ impl Editor {
         // Find the first and last char index visible within the editor.
         let c_first =
             self.formatter
-                .index_set_horizontal_v2d(&self.buffer, self.view_pos.0, 0, Floor);
+                .index_set_horizontal_v2d(&self.buffer, self.view_pos.0, 0);
         let mut c_last = self.formatter.index_offset_vertical_v2d(
             &self.buffer,
             c_first,
-            self.view_dim.0 as isize,
-            (Floor, Floor),
+            self.view_dim.0 as isize
         );
         c_last =
             self.formatter
-                .index_set_horizontal_v2d(&self.buffer, c_last, self.view_dim.1, Floor);
+                .index_set_horizontal_v2d(&self.buffer, c_last, self.view_dim.1);
 
         // Adjust the view depending on where the cursor is
         if self.cursors[0].range.0 < c_first {
@@ -348,8 +345,7 @@ impl Editor {
             self.view_pos.0 = self.formatter.index_offset_vertical_v2d(
                 &self.buffer,
                 self.cursors[0].range.0,
-                -(self.view_dim.0 as isize),
-                (Floor, Floor),
+                -(self.view_dim.0 as isize)
             );
         }
     }
@@ -581,14 +577,12 @@ impl Editor {
             let mut temp_index = self.formatter.index_offset_vertical_v2d(
                 &self.buffer,
                 c.range.0,
-                vmove,
-                (Round, Round),
+                vmove
             );
             temp_index = self.formatter.index_set_horizontal_v2d(
                 &self.buffer,
                 temp_index,
                 c.vis_start,
-                Round,
             );
 
             // back up to a valid grapheme
@@ -619,14 +613,12 @@ impl Editor {
             let mut temp_index = self.formatter.index_offset_vertical_v2d(
                 &self.buffer,
                 c.range.0,
-                vmove,
-                (Round, Round),
+                vmove
             );
             temp_index = self.formatter.index_set_horizontal_v2d(
                 &self.buffer,
                 temp_index,
-                c.vis_start,
-                Round,
+                c.vis_start
             );
 
             if !self.buffer.is_grapheme(temp_index) {
@@ -655,8 +647,7 @@ impl Editor {
         self.view_pos.0 = self.formatter.index_offset_vertical_v2d(
             &self.buffer,
             self.view_pos.0,
-            -1 * move_amount as isize,
-            (Round, Round),
+            -1 * move_amount as isize
         );
 
         self.cursor_up(move_amount);
@@ -671,8 +662,7 @@ impl Editor {
         self.view_pos.0 = self.formatter.index_offset_vertical_v2d(
             &self.buffer,
             self.view_pos.0,
-            move_amount as isize,
-            (Round, Round),
+            move_amount as isize
         );
 
         self.cursor_down(move_amount);
@@ -687,8 +677,7 @@ impl Editor {
         self.cursors[0].range.0 = self.formatter.index_set_horizontal_v2d(
             &self.buffer,
             pos,
-            self.cursors[0].vis_start,
-            Round,
+            self.cursors[0].vis_start
         );
         self.cursors[0].range.1 = self.cursors[0].range.0;
 
@@ -721,21 +710,14 @@ impl Editor {
     }
 
     // encapsulate routines for both formatter and buffer
-
+    // TODO: what's this do?
     pub fn calc_vis_line_offset(&self, line_index : usize, 
-                                       line_block_index : usize, 
                                        char_index : usize) -> usize {
 
         let temp_line = self.buffer.get_line(line_index);
         
         let (vis_line_offset, _) = self.formatter.index_to_v2d(
-            RopeGraphemes::new(&temp_line.slice(
-                (line_block_index * LINE_BLOCK_LENGTH)
-                    ..min(
-                        temp_line.len_chars(),
-                        (line_block_index + 1) * LINE_BLOCK_LENGTH,
-                    ),
-            )),
+            RopeGraphemes::new(&temp_line.slice(..)),
             self.view_pos.0 - char_index,
         );
         vis_line_offset 
@@ -745,20 +727,15 @@ impl Editor {
         self.formatter.index_to_horizontal_v2d(&self.buffer, char_idx)
     }
 
-    // TODO: stopped here
-    pub fn vis_iter<'a>(&'a self, line_block_index: usize, line : &'a RopeSlice) -> 
+    // return the grapheme iterator of the formatter on the line
+    pub fn vis_iter<'a>(&'a self, line : &'a RopeSlice) -> 
     LineFormatterVisIter<'a, RopeGraphemes<'a>> {
-
-        let line_len = line.len_chars();
-
-        self.formatter.iter(RopeGraphemes::new(
-                &line.slice((line_block_index * LINE_BLOCK_LENGTH)..line_len),
-        ))
+        self.formatter.iter(RopeGraphemes::new(&line.slice(..)))
     }
 
-    pub fn line_beyond_block_length(&self, line_g_index : usize) -> bool {
-        line_g_index >= LINE_BLOCK_LENGTH
-    }
+    // pub fn line_beyond_block_length(&self, line_g_index : usize) -> bool {
+    //     line_g_index >= LINE_BLOCK_LENGTH
+    // }
 
     // since formatter is private
     pub fn set_wrap_width_to_view_dim(&mut self) {
@@ -846,13 +823,6 @@ impl Editor {
     pub fn line_counts(&self) -> usize { 
         self.buffer.line_count()
     }
-
-
-    // just a plain function
-    pub fn block_index_and_offset(index: usize) -> (usize, usize) {
-        block_index_and_offset(index)
-    }
-
 
 }
 
