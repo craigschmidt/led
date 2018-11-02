@@ -18,8 +18,9 @@ use utils::{grapheme_width, RopeGraphemes};
 pub(crate) struct Screen {
     // TODO: convert this for the mouse version
     out: RefCell<AlternateScreen<RawTerminal<BufWriter<io::Stdout>>>>,
-    // what is the purpose of this? 
-    buf: RefCell<Vec<Option<(Style, SmallString)>>>,
+    // store the style and grapheme and an Option(usize) for the 
+    // char_idx in the current buffer if the start of the grapheme
+    buf: RefCell<Vec<Option<(Style, SmallString,Option<usize>)>>>,
     w: usize,   // width of screen
     h: usize,   // height of screen
 }
@@ -27,11 +28,12 @@ pub(crate) struct Screen {
 impl Screen {
     pub(crate) fn new() -> Self {
         let (w, h) = termion::terminal_size().unwrap();
-        let buf = iter::repeat(Some((Style(Color::Black, Color::Black), " ".into())))
+        let buf = iter::repeat(Some((Style(Color::Black, Color::Black), " ".into(), None)))
             .take(w as usize * h as usize)
             .collect();
         Screen {
             out: RefCell::new(AlternateScreen::from(
+                // TODO: magic number
                 BufWriter::with_capacity(1 << 14, io::stdout())
                     .into_raw_mode()
                     .unwrap(),
@@ -45,13 +47,14 @@ impl Screen {
     pub(crate) fn clear(&self, col: Color) {
         for cell in self.buf.borrow_mut().iter_mut() {
             match *cell {
-                Some((ref mut style, ref mut text)) => {
+                Some((ref mut style, ref mut text, ref mut char_idx)) => {
                     *style = Style(col, col);
                     text.clear();
                     text.push_str(" ");
+                    *char_idx = None;
                 }
                 _ => {
-                    *cell = Some((Style(col, col), " ".into()));
+                    *cell = Some((Style(col, col), " ".into(), None));
                 }
             }
         }
@@ -62,7 +65,7 @@ impl Screen {
         self.h = h;
         self.buf
             .borrow_mut()
-            .resize(w * h, Some((Style(Color::Black, Color::Black), " ".into())));
+            .resize(w * h, Some((Style(Color::Black, Color::Black), " ".into(), None)));
     }
 
     pub(crate) fn present(&self) {
@@ -78,7 +81,7 @@ impl Screen {
             // Goto coordinates are 1 based so + 1
             write!(out, "{}", termion::cursor::Goto(1, y as u16 + 1)).unwrap();
             while x < self.w {
-                if let Some((style, ref text)) = buf[y * self.w + x] {
+                if let Some((style, ref text, _char_idx)) = buf[y * self.w + x] {
                     if style != last_style {
                         write!(out, "{}", style).unwrap();
                         last_style = style;
@@ -96,6 +99,7 @@ impl Screen {
     }
 
     // draw a string slice, like the numbers in the gutter, or the header
+    // this is for non-buffer text, so set the char_idx to None always 
     pub(crate) fn draw(&self, x: usize, y: usize, text: &str, style: Style) {
         if y < self.h {
             let mut buf = self.buf.borrow_mut();
@@ -105,7 +109,7 @@ impl Screen {
                 // skip zero width characters
                 if width > 0 {
                     if x < self.w {
-                        buf[y * self.w + x] = Some((style, g.into()));
+                        buf[y * self.w + x] = Some((style, g.into(), None));
                     }
                     x += 1;
                     // skip the double wide characters that would be covered up, 
@@ -122,7 +126,8 @@ impl Screen {
     }
 
     // draw the main body text from a rope slice
-    pub(crate) fn draw_rope_slice(&self, x: usize, y: usize, text: &RopeSlice, style: Style) {
+    // buffer text remembers the corresponding char_idx where it came from
+    pub(crate) fn draw_rope_slice(&self, x: usize, y: usize, text: &RopeSlice, style: Style, char_idx : usize) {
         if y < self.h {
             let mut buf = self.buf.borrow_mut();
             let mut x = x;
@@ -131,7 +136,7 @@ impl Screen {
                 // skip zero width characters
                 if width > 0 {
                     if x < self.w {
-                        buf[y * self.w + x] = Some((style, SmallString::from_rope_slice(&g)));
+                        buf[y * self.w + x] = Some((style, SmallString::from_rope_slice(&g),Some(char_idx)));
                     }
                     x += 1;
                     // skip the double wide characters that would be covered up, 

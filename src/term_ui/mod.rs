@@ -352,7 +352,7 @@ impl TermUI {
         let gutter_width = editor.get_gutter_width();  
         debug!("gutter_width:{}", gutter_width);  // i.e. 3
         
-        //let mut char_index = editor.get_view_char_idx();
+        //let mut char_index = editor.get_first_disp_char_idx();
         //debug!("char_index:{}", char_index);  // 0 
 
         // get the line and column of the current editor.view_pos.0
@@ -420,6 +420,7 @@ impl TermUI {
                 // pos_y is the 0 based row of just the wrapped line by itself
                 // pos_x is the 0 based column of just the wrapped line by itself
                 // so if a line takes 3 rows to display, pos_y is 0,1,or 2
+                // TODO: huh we have a valid char_index here, so maybe we don't need the _char_offset :-(
                 if let Some((g, (pos_y, pos_x), width, _char_offset)) = g_iter.next() {
                   
                     let mut g_to_print = g.to_string();
@@ -442,7 +443,8 @@ impl TermUI {
                         last_pos_y = pos_y;
                     }
                     // Calculate the cell coordinates at which to draw the grapheme
-                    let px: usize = pos_x + screen_col - editor.get_vis_horizontal_offset();
+                    // px was - vis horizontal offset, which is always 0
+                    let px: usize = pos_x + screen_col;
                     let py: usize = lines_traversed + screen_line;
 
                     // If we're off the bottom, we're done
@@ -477,9 +479,9 @@ impl TermUI {
                             // just print a regular character
                             // either with as a cursor or not
                             if at_cursor {
-                                self.screen.draw_rope_slice(px,py,&g,Style(Color::Black, Color::White));
+                                self.screen.draw_rope_slice(px,py,&g,Style(Color::Black, Color::White),char_index);
                             } else {
-                                self.screen.draw_rope_slice(px,py,&g,Style(Color::White, Color::Black));
+                                self.screen.draw_rope_slice(px,py,&g,Style(Color::White, Color::Black),char_index);
                             }
                         }
                     }
@@ -509,7 +511,8 @@ impl TermUI {
             let pos_x = editor
                 .index_to_horizontal_v2d(editor.char_count());
             debug!("pos_x:{}", pos_x);
-            let px : usize = pos_x + screen_col - editor.get_vis_horizontal_offset();
+            // this was - vis horizontal offset, which is always 0
+            let px : usize = pos_x + screen_col;
             debug!("px:{}",px);
             let py = screen_line - 1;
             if (px >= c1.1) && (py >= c1.0) && (px <= c2.1) && (py <= c2.0) {

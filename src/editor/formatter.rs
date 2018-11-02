@@ -14,11 +14,7 @@ pub enum WrapType {
     WordWrap(usize),
 }
 
-// Maximum graphemes in a line before a soft line break is forced.
-// This is necessary to prevent pathological formatting cases which
-// could slow down the editor arbitrarily for arbitrarily long
-// lines.
-pub const LINE_BLOCK_LENGTH: usize = 1 << 12;  // 4096 i.e. 2^12
+// note: formerly pub const LINE_BLOCK_LENGTH: usize = 1 << 12;  // 4096 i.e. 2^12
 
 // ===================================================================
 // LineFormatter implementation for terminals/consoles.

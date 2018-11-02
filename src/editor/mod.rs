@@ -4,7 +4,6 @@ use self::cursor::CursorSet;
 use self::buffer::Buffer;
 use self::formatter::LineFormatter;
 use self::formatter::LineFormatterVisIter;
-use self::formatter::LINE_BLOCK_LENGTH;
 use ropey::{RopeSlice,iter};
 use std::cmp::{max, min};
 use std::path::{Path, PathBuf};
@@ -34,7 +33,8 @@ pub struct Editor {
 
     // TODO: understand these, 
     // is the the first character to display in the view?
-    view_pos: (usize, usize), // (char index, visual horizontal offset)
+    first_disp_char_idx : usize,
+    // view_pos: (usize, usize), // (char index, visual horizontal offset)
 
     // The editing cursor positions
     cursors: CursorSet,
@@ -53,7 +53,8 @@ impl Editor {
             dirty: false,
             editor_dim: (0, 0),
             view_dim: (0, 0),
-            view_pos: (0, 0),
+            first_disp_char_idx : 0,
+            // view_pos: (0, 0),
             cursors: CursorSet::new(),
         }
     }
@@ -61,8 +62,8 @@ impl Editor {
     // first character to display in the editor
     // try go refactor to this once avoiding line length
     #[allow(dead_code)] 
-    pub fn get_view_char_idx(&self) -> usize { 
-        return self.view_pos.0;
+    pub fn get_first_disp_char_idx(&self) -> usize { 
+        return self.first_disp_char_idx;
     }
 
     pub fn new_from_file(path: &Path) -> Editor {
@@ -82,7 +83,8 @@ impl Editor {
             dirty: false,
             editor_dim: (0, 0),
             view_dim: (0, 0),
-            view_pos: (0, 0),
+            first_disp_char_idx : 0,
+            // view_pos: (0, 0),
             cursors: CursorSet::new(),
         };
 
@@ -328,7 +330,7 @@ impl Editor {
         // Find the first and last char index visible within the editor.
         let c_first =
             self.formatter
-                .index_set_horizontal_v2d(&self.buffer, self.view_pos.0, 0);
+                .index_set_horizontal_v2d(&self.buffer, self.first_disp_char_idx, 0);
         let mut c_last = self.formatter.index_offset_vertical_v2d(
             &self.buffer,
             c_first,
@@ -340,9 +342,9 @@ impl Editor {
 
         // Adjust the view depending on where the cursor is
         if self.cursors[0].range.0 < c_first {
-            self.view_pos.0 = self.cursors[0].range.0;
+            self.first_disp_char_idx = self.cursors[0].range.0;
         } else if self.cursors[0].range.0 > c_last {
-            self.view_pos.0 = self.formatter.index_offset_vertical_v2d(
+            self.first_disp_char_idx = self.formatter.index_offset_vertical_v2d(
                 &self.buffer,
                 self.cursors[0].range.0,
                 -(self.view_dim.0 as isize)
@@ -384,17 +386,19 @@ impl Editor {
                 // Update cursor with offset
                 c.range.0 += offset;
                 c.range.1 += offset;
+                let vis_pos = self.formatter.index_to_horizontal_v2d(&self.buffer, c.range.0);
 
-                // Figure out how many spaces to insert
-                let vis_pos = self
-                    .formatter
-                    .index_to_horizontal_v2d(&self.buffer, c.range.0);
                 // TODO: handle tab settings
+                // Figure out how many spaces to insert
+                // vis_pos is the column in buffer
                 let next_tab_stop =
                     ((vis_pos / self.soft_tab_width as usize) + 1) * self.soft_tab_width as usize;
+                // TODO: magic number
                 let space_count = min(next_tab_stop - vis_pos, 8);
 
                 // Insert spaces
+                // TODO: this implies an upper bound on space_count that prob doesn't exist
+                // fix for general case
                 let space_strs = [
                     "", " ", "  ", "   ", "    ", "     ", "      ", "       ", "        ",
                 ];
@@ -570,6 +574,9 @@ impl Editor {
         self.move_view_to_cursor();
     }
 
+    // vis_start is the col where the cursor is displayed
+    // we could keep track of the char_idx of each position on the screen
+    // and the location within the buffer of each cursor
     pub fn cursor_up(&mut self, n: usize) {
         for c in self.cursors.iter_mut() {
             let vmove =  -1*n  as isize;  // single_line_height
@@ -644,9 +651,9 @@ impl Editor {
     pub fn page_up(&mut self) {
         let move_amount =
             self.view_dim.0 - max(self.view_dim.0 / 8, 1);  // single_line_height
-        self.view_pos.0 = self.formatter.index_offset_vertical_v2d(
+        self.first_disp_char_idx = self.formatter.index_offset_vertical_v2d(
             &self.buffer,
-            self.view_pos.0,
+            self.first_disp_char_idx,
             -1 * move_amount as isize
         );
 
@@ -659,9 +666,9 @@ impl Editor {
     pub fn page_down(&mut self) {
         let move_amount =
             self.view_dim.0 - max(self.view_dim.0 / 8, 1);  // single_line_height
-        self.view_pos.0 = self.formatter.index_offset_vertical_v2d(
+        self.first_disp_char_idx = self.formatter.index_offset_vertical_v2d(
             &self.buffer,
-            self.view_pos.0,
+            self.first_disp_char_idx,
             move_amount as isize
         );
 
@@ -672,6 +679,7 @@ impl Editor {
     }
 
     pub fn jump_to_line(&mut self, n: usize) {
+        // move cursor to new location on start of line n
         let pos = self.buffer.line_col_to_index((n, 0));
         self.cursors.truncate(1);
         self.cursors[0].range.0 = self.formatter.index_set_horizontal_v2d(
@@ -687,19 +695,18 @@ impl Editor {
 
     // encapsulate buffer routines
 
-    /// Converts a line number and char-column number into a char index.
-    // map to pos tuple
-    pub fn line_col_to_index(&self, line_index: usize, line_block_index : usize) -> usize {
-        self.buffer.line_col_to_index((line_index, line_block_index * LINE_BLOCK_LENGTH))
+    /// Converts a line number and char_offset into a global char_idx.
+    pub fn line_col_to_index(&self, line_index: usize, char_offset : usize) -> usize {
+        self.buffer.line_col_to_index((line_index, char_offset))
     }
 
     /// Converts a char index into a line number and char-column
     /// number.
     ///
-    /// get the line and column of the current view_pos.0
+    /// get the line and column of the current first_disp_char_idx
     pub fn index_to_line_col_view_pos_row(&self) -> (usize, usize) {
-        self.buffer.index_to_line_col(self.view_pos.0)
-    }
+        self.buffer.index_to_line_col(self.first_disp_char_idx)
+    } 
 
     pub fn char_count(&self) -> usize {
         self.buffer.char_count()
@@ -718,7 +725,7 @@ impl Editor {
         
         let (vis_line_offset, _) = self.formatter.index_to_v2d(
             RopeGraphemes::new(&temp_line.slice(..)),
-            self.view_pos.0 - char_index,
+            self.first_disp_char_idx - char_index,
         );
         vis_line_offset 
     }
@@ -732,10 +739,6 @@ impl Editor {
     LineFormatterVisIter<'a, RopeGraphemes<'a>> {
         self.formatter.iter(RopeGraphemes::new(&line.slice(..)))
     }
-
-    // pub fn line_beyond_block_length(&self, line_g_index : usize) -> bool {
-    //     line_g_index >= LINE_BLOCK_LENGTH
-    // }
 
     // since formatter is private
     pub fn set_wrap_width_to_view_dim(&mut self) {
@@ -790,11 +793,12 @@ impl Editor {
         self.editor_dim.1 - self.view_dim.1
     }
 
-    // TODO: remove me at some point, or break off from view_pos.0
-    // is just always 0
-    pub fn get_vis_horizontal_offset(&self) -> usize {
-        self.view_pos.1
-    }
+    // // TODO: remove me at some point, or break off from first_disp_char_idx
+    // // is just always 0
+    // // TODO: good time to do this now
+    // pub fn get_vis_horizontal_offset(&self) -> usize {
+    //     self.view_pos.1
+    // }
 
 
     // Check if the character is within a cursor
