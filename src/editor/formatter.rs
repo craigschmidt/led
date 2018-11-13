@@ -33,6 +33,7 @@ impl LineFormatter {
         LineFormatter {
             tab_width: tab_width,
             wrap_type: WrapType::WordWrap(80),  // a default, really set by set_wrap_width
+            // wrap_type: WrapType::NoWrap,  // a default, really set by set_wrap_width
             wrap_additional_indent: 0,
         }
     }
