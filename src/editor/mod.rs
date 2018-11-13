@@ -31,10 +31,8 @@ pub struct Editor {
     // which changes as the number of digits in the line numbering grows
     view_dim: (usize, usize), // (height, width)
 
-    // TODO: understand these, 
-    // is the the first character to display in the view?
+    // the first character index to display in the view
     first_disp_char_idx : usize,
-    // view_pos: (usize, usize), // (char index, visual horizontal offset)
 
     // The editing cursor positions
     cursors: CursorSet,
@@ -613,6 +611,11 @@ impl Editor {
         self.move_view_to_cursor();
     }
 
+    // TODO: if the cursor is on the screen, and will stay on the screen, 
+    // then we can use the cached character index
+    // to move it down n rows
+    // if not, then we need to find the character that is in the same horizontal column
+    // either on the current line or the next line
     pub fn cursor_down(&mut self, n: usize) {
         for c in self.cursors.iter_mut() {
             let vmove = n as isize;  // single_line_height

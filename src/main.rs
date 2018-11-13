@@ -59,7 +59,7 @@ fn main() {
         .unwrap_or_else(|e| e.exit());
 
     // start logging:  one of error, warn, info, debug, trace
-    Logger::with_env_or_str("debug")
+    Logger::with_env_or_str("error")
             .log_to_file()
             .directory("log_files")
             // .format(opt_format)  try default now

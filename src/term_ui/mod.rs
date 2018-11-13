@@ -136,7 +136,7 @@ impl TermUI {
 
             // Draw
             draw {
-                self.screen.clear(Color::Black);
+                self.screen.clear(Color::Background);
                 self.draw_editor(&self.editor, (0, 0), (self.height - 1, self.width - 1));
             },
 
@@ -229,7 +229,7 @@ impl TermUI {
     }
 
     fn go_to_line_ui_loop(&mut self) {
-        let style = Style(Color::Black, Color::Cyan);
+        let style = Style(Color::StorageFg, Color::InvisiblesBg);
 
         let mut cancel = false;
         let prefix = "Jump to line: ";
@@ -240,7 +240,7 @@ impl TermUI {
 
             // Draw
             draw {
-                self.screen.clear(Color::Black);
+                self.screen.clear(Color::Background);
                 self.draw_editor(&self.editor, (0, 0), (self.height - 1, self.width - 1));
                 for i in 0..self.width {
                     self.screen.draw(i, 0, " ", style);
@@ -306,7 +306,7 @@ impl TermUI {
         c1: (usize, usize),  // corner ???
         c2: (usize, usize),
     ) {
-        let style = Style(Color::Black, Color::Cyan);
+        let style = Style(Color::StorageFg, Color::InvisiblesBg);
 
         // Fill in top row with info line color
         for i in c1.1..(c2.1 + 1) {
@@ -380,7 +380,7 @@ impl TermUI {
         // due to wrapping
         for y in c1.0..(c2.0 + 1) {
             for x in c1.1..(c1.1 + gutter_width - 1) {
-                self.screen.draw(x, y, " ", Style(Color::White, Color::Blue));
+                self.screen.draw(x, y, " ", Style(Color::StorageFg, Color::InvisiblesBg));
             }
         }
 
@@ -402,7 +402,7 @@ impl TermUI {
                     lnx,
                     lny,
                     &format!("{}", line_num)[..],
-                    Style(Color::White, Color::Blue),
+                    Style(Color::StorageFg, Color::InvisiblesBg),
                 );
             }
  
@@ -461,27 +461,27 @@ impl TermUI {
                         // if off the end of the line, and a cursor
                         if rope_slice_is_line_ending(&g) {
                             if at_cursor {
-                                self.screen.draw(px,py," ",Style(Color::Black, Color::White));
+                                self.screen.draw(px,py," ",Style(Color::Background, Color::Foreground));
                             }
                         } else if g == "\t" {
                             // print the right number of spaces for a tab
                             for i in 0..width {
                                 let tpx = px + i;
                                 if tpx <= c2.1 {
-                                    self.screen.draw(tpx,py," ",Style(Color::White, Color::Black));
+                                    self.screen.draw(tpx,py," ",Style(Color::Foreground, Color::Background));
                                 }
                             }
                             // and maybe print a cursor
                             if at_cursor {
-                                self.screen.draw(px,py," ",Style(Color::Black, Color::White));
+                                self.screen.draw(px,py," ",Style(Color::Background, Color::Foreground));
                             }
                         } else {
                             // just print a regular character
                             // either with as a cursor or not
                             if at_cursor {
-                                self.screen.draw_rope_slice(px,py,&g,Style(Color::Black, Color::White),char_index);
+                                self.screen.draw_rope_slice(px,py,&g,Style(Color::Background, Color::Foreground),char_index);
                             } else {
-                                self.screen.draw_rope_slice(px,py,&g,Style(Color::White, Color::Black),char_index);
+                                self.screen.draw_rope_slice(px,py,&g,Style(Color::Foreground, Color::Background),char_index);
                             }
                         }
                     }
@@ -516,7 +516,7 @@ impl TermUI {
             debug!("px:{}",px);
             let py = screen_line - 1;
             if (px >= c1.1) && (py >= c1.0) && (px <= c2.1) && (py <= c2.0) {
-                self.screen.draw(px,py," ",Style(Color::Black, Color::Red));
+                self.screen.draw(px,py," ",Style(Color::Background, Color::KeywordFg));
             }
         }
     }
